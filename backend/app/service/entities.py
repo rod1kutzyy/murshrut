@@ -6,7 +6,7 @@ from uuid import UUID
 @dataclass(frozen=True)
 class Identity:
     max_user_id: int
-    first_name: str = 'Друг'
+    first_name: str = "Друг"
     last_name: str | None = None
     username: str | None = None
     photo_url: str | None = None
@@ -80,3 +80,12 @@ class ServiceConfig:
     demo_cities: tuple[str, ...]
     sync_interval_seconds: int
     admin_sync_token: str
+
+
+@dataclass(frozen=True)
+class EveningPlan:
+    id: UUID
+    user_id: UUID
+    snapshot: dict
+    created_at: datetime
+    saved: bool = False

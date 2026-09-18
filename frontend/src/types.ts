@@ -67,3 +67,35 @@ declare global {
     };
   }
 }
+
+export type EveningVibe =
+  "active" | "calm" | "date" | "learn" | "culture" | "surprise";
+export type EveningOptions = {
+  vibe: EveningVibe;
+  duration_hours: 2 | 4 | 6;
+  budget_max: 0 | 1000 | 3000 | null;
+};
+export type EveningEvent = Event & {
+  estimated_price: number | null;
+  next_transfer: { distance_km: number; minutes: number } | null;
+};
+export type EveningPlan = EveningOptions & {
+  id: string;
+  saved: boolean;
+  created_at: string;
+  city: string;
+  date: string;
+  events: EveningEvent[];
+  event_count: number;
+  total_cost: number;
+  cost_complete: boolean;
+  duration_minutes: number;
+  score: number;
+  score_components: Record<string, number>;
+  reasons: string[];
+  warnings: string[];
+};
+export type EveningGeneration = {
+  plan: EveningPlan | null;
+  reason: "no_matches" | "exhausted" | null;
+};

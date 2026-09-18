@@ -24,6 +24,8 @@ import MyEvents from "./pages/MyEvents";
 import Discover from "./pages/Discover";
 import EventDetails from "./pages/EventDetails";
 import MapPage from "./pages/MapPage";
+import EveningPage from "./pages/EveningPage";
+import { setEveningOwner } from "./evening";
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [config, setConfig] = useState<Config | null>(null);
@@ -72,13 +74,17 @@ export default function App() {
     const callback = () => navigate(-1);
     if (
       location.pathname.startsWith("/events/") ||
-      location.pathname === "/profile"
+      location.pathname === "/profile" ||
+      location.pathname.startsWith("/evening")
     )
       back.show();
     else back.hide();
     back.onClick(callback);
     return () => back.offClick(callback);
   }, [location.pathname, navigate]);
+  useEffect(() => {
+    if (user) setEveningOwner(`${user.id}:${user.city}`);
+  }, [user?.id, user?.city]);
   if (error)
     return (
       <State
@@ -122,6 +128,21 @@ export default function App() {
           <Route
             path="/events/:id"
             element={<EventDetails config={config} />}
+          />
+          <Route
+            path="/evening"
+            element={
+              <EveningPage key={`${user.id}:${user.city}`} user={user} />
+            }
+          />
+          <Route
+            path="/evenings/:id"
+            element={
+              <EveningPage
+                key={`${user.id}:${user.city}:${location.pathname}`}
+                user={user}
+              />
+            }
           />
           <Route path="/map" element={<MapPage />} />
           <Route

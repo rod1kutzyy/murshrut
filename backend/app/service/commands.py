@@ -19,8 +19,8 @@ class ReactCommand:
 
 @dataclass(frozen=True)
 class CatalogQuery:
-    q: str = ''
-    date_mode: str = 'any'
+    q: str = ""
+    date_mode: str = "any"
     selected_date: date | None = None
     categories: tuple[str, ...] = ()
     free_only: bool = False
@@ -28,3 +28,11 @@ class CatalogQuery:
     evening: bool = False
     limit: int = 20
     offset: int = 0
+
+
+@dataclass(frozen=True)
+class EveningQuery:
+    vibe: str
+    duration_hours: int
+    budget_max: int | None
+    excluded_plan_ids: tuple[UUID, ...] = ()
