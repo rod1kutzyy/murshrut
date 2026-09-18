@@ -17,6 +17,7 @@ import type {
 } from "../types";
 import {
   BUDGETS,
+  EVENING_VARIANT_LIMIT,
   DURATIONS,
   VIBES,
   getEveningDraft,
@@ -86,6 +87,12 @@ export default function EveningPage({ user }: { user: User }) {
       draft.options.budget_max === undefined
     )
       return;
+    if (draft.shownIds.length >= EVENING_VARIANT_LIMIT) {
+      setNotice(
+        `Показано ${EVENING_VARIANT_LIMIT} вариантов с этими условиями. Измените условия, чтобы собрать новый вечер.`,
+      );
+      return;
+    }
     locked.current = true;
     setBusy(true);
     setError("");
@@ -104,7 +111,7 @@ export default function EveningPage({ user }: { user: User }) {
         setDraft((previous) => ({
           ...previous,
           plan: result.plan,
-          shownIds: [...previous.shownIds, result.plan!.id].slice(-200),
+          shownIds: [...previous.shownIds, result.plan!.id],
         }));
       } else if (plan) {
         setNotice(

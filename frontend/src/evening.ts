@@ -1,5 +1,8 @@
 import type { EveningOptions, EveningPlan } from "./types";
 
+// Match the API exclusion limit; never discard previously shown variants.
+export const EVENING_VARIANT_LIMIT = 200;
+
 export const VIBES = [
   { value: "active", label: "Хочу движ", hint: "Музыка, встречи и энергия" },
   { value: "calm", label: "Спокойный вечер", hint: "Без спешки и суеты" },

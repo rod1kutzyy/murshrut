@@ -360,3 +360,52 @@ test("real demo source generates and saves a feasible free evening", async ({
   await page.getByRole("link", { name: "Мои события", exact: true }).click();
   await expect(page.locator(".saved-evening").first()).toBeVisible();
 });
+
+test("200 shown variants remain excluded and the limit keeps the current route", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  const { generated } = await mockApp(page);
+  await page.goto("/evening");
+  await chooseEvening(page);
+  for (let index = 2; index <= 200; index++) {
+    await page
+      .getByRole("button", { name: "Собрать другой", exact: true })
+      .click();
+    await expect(page.locator(".evening-timeline h3").first()).toHaveText(
+      `Событие вечера ${index}-0`,
+    );
+  }
+  expect(generated).toHaveLength(200);
+  expect(generated[199].excluded_plan_ids).toEqual(
+    Array.from({ length: 199 }, (_, index) => `plan-${index + 1}`),
+  );
+  await page
+    .getByRole("button", { name: "Подробнее", exact: true })
+    .first()
+    .click();
+  await page.getByRole("button", { name: "Назад", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Собрать другой", exact: true })
+    .click();
+  await expect(
+    page.getByRole("status").filter({ hasText: /Показано 200 вариантов/ }),
+  ).toBeVisible();
+  expect(generated).toHaveLength(200);
+  await expect(page.locator(".evening-timeline h3").first()).toHaveText(
+    "Событие вечера 200-0",
+  );
+  await page.getByRole("button", { name: "Мне нравится", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Вечер сохранён", exact: true }),
+  ).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Изменить условия", exact: true })
+    .click();
+  await chooseEvening(page, "Бесплатно");
+  await expect(page.locator(".evening-timeline h3").first()).toHaveText(
+    "Событие вечера 201-0",
+  );
+  expect(generated).toHaveLength(201);
+  expect(generated[200].excluded_plan_ids).toEqual([]);
+});

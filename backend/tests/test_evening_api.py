@@ -205,3 +205,46 @@ async def test_repository_popularity_excludes_self_and_plans_survive_event_remov
         assert await uow.evenings.save(plan.id, other.id, NOW) is None
         assert len(await uow.evenings.saved(user.id)) == 1
         assert await uow.evenings.saved(other.id) == []
+
+
+@pytest.mark.asyncio
+async def test_health_stays_available_while_evening_worker_is_busy(
+    api_client, monkeypatch
+):
+    import asyncio
+    import threading
+
+    from app.service import evenings
+
+    client, headers, _ = api_client
+    entered = threading.Event()
+    release = threading.Event()
+    calculate = evenings.select_evening_route
+
+    def busy_worker(*args):
+        entered.set()
+        assert release.wait(5), "Calculation blocked the event loop"
+        return calculate(*args)
+
+    monkeypatch.setattr(evenings, "select_evening_route", busy_worker)
+    generation = asyncio.create_task(
+        client.post(
+            "/api/v1/evenings/generate",
+            headers=headers,
+            json={"vibe": "calm", "duration_hours": 2, "budget_max": 1000},
+        )
+    )
+
+    async def wait_for_worker():
+        while not entered.is_set():
+            await asyncio.sleep(0.001)
+
+    try:
+        await asyncio.wait_for(wait_for_worker(), timeout=2)
+        assert not generation.done()
+        response = await asyncio.wait_for(client.get("/api/health"), timeout=1)
+        assert response.status_code == 200 and response.json() == {"status": "ok"}
+    finally:
+        release.set()
+        result = await generation
+    assert result.status_code == 200 and result.json()["plan"]["event_count"] == 2

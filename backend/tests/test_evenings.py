@@ -480,3 +480,81 @@ def test_popularity_smoothing_is_a_service_rule():
     assert popularity_score(ReactionCounts(0, 0)) == 0.5
     assert popularity_score(ReactionCounts(1, 1)) == 0.6
     assert popularity_score(ReactionCounts(0, 1)) == 0.4
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "vibe", ["active", "calm", "date", "learn", "culture", "surprise"]
+)
+async def test_cached_search_preserves_exhaustive_ranking(vibe, monkeypatch):
+    from collections import Counter
+    from itertools import combinations
+
+    from app.service import evenings
+
+    rows = [
+        replace(
+            event(hour=15 + i // 3),
+            category=("kino", "koncerty", "vystavki")[i % 3],
+            price_min=150 + i * 50,
+            price_max=150 + i * 50,
+            latitude=55.75 + i * 0.0001,
+        )
+        for i in range(9)
+    ]
+    rows.sort(key=lambda row: (row.start_date, str(row.id)))
+    prefs = Preferences(("kino", "vystavki"), None, "family", "any", "evening")
+    reactions = [Reaction(rows[0].id, rows[0].category, "like")]
+    uow = MemoryUow(list(reversed(rows)), history=reactions, preferences=prefs)
+    query = replace(OPTIONS, vibe=vibe, duration_hours=4, budget_max=3000)
+    liked = Counter([rows[0].category])
+    saved = {rows[0].id}
+    candidates = []
+    for size in (2, 3):
+        for route in combinations(rows, size):
+            movements = [transfer(a, b) for a, b in zip(route, route[1:])]
+            if any(
+                movement.minutes > 30
+                or b.start_date < a.end_date + timedelta(minutes=movement.minutes)
+                for a, b, movement in zip(route, route[1:], movements)
+            ):
+                continue
+            total = sum(estimated_price(row) for row in route)
+            duration = (route[-1].end_date - route[0].start_date).total_seconds() / 60
+            if total > query.budget_max or duration > query.duration_hours * 60:
+                continue
+            score, parts = score_route(
+                route, movements, query, prefs, liked, Counter(), saved, {}
+            )
+            walking = sum(movement.minutes for movement in movements)
+            waiting = (
+                duration
+                - sum(
+                    (row.end_date - row.start_date).total_seconds() / 60
+                    for row in route
+                )
+                - walking
+            )
+            key = (-score, walking, waiting, total, tuple(str(row.id) for row in route))
+            candidates.append((key, route, parts))
+    expected = min(candidates, key=lambda item: item[0])
+    seen = set()
+    compute = evenings.event_signals
+
+    def once_per_event(row, *args):
+        assert row.id not in seen, "Recomputed event signals for another candidate"
+        seen.add(row.id)
+        return compute(row, *args)
+
+    monkeypatch.setattr(evenings, "event_signals", once_per_event)
+    plan, reason = await service(uow).generate(USER, query)
+    assert reason is None
+    assert [stop.event.id for stop in plan.route.events] == [
+        row.id for row in expected[1]
+    ]
+    assert plan.route.score == -expected[0][0]
+    assert all(
+        getattr(plan.route.score_components, key) == value
+        for key, value in expected[2].items()
+    )
+    assert seen == {row.id for row in rows}

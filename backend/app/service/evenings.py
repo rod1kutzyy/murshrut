@@ -1,5 +1,6 @@
 """Feasible evening routes first, normalized personal scoring second."""
 
+import asyncio
 from collections import Counter, defaultdict
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -100,41 +101,168 @@ def popularity_score(counts: ReactionCounts) -> float:
     return (counts.likes + 2) / (counts.total + 4)
 
 
-def score_route(
-    events, transitions, query, preference, liked, disliked, saved, popularity
-):
-    size = len(events)
-    raw_total = sum((estimated_price(event) or Decimal(0)) for event in events)
+def event_signals(event, query, preference, liked, disliked, saved, popularity):
+    return (
+        interest_score(event, preference),
+        1
+        if event.id in saved
+        else (liked[event.category] + 1)
+        / (liked[event.category] + disliked[event.category] + 2),
+        float(event.category in VIBE_CATEGORIES[query.vibe]),
+        popularity_score(popularity.get(event.id, ReactionCounts(0, 0))),
+    )
+
+
+def cached_score(signals, categories, transitions, query, raw_total):
+    size = len(signals)
     components = {
-        "interests_match": sum(interest_score(event, preference) for event in events)
-        / size,
-        "swipe_history_match": sum(
-            1
-            if event.id in saved
-            else (liked[event.category] + 1)
-            / (liked[event.category] + disliked[event.category] + 2)
-            for event in events
-        )
-        / size,
-        "category_match": (0.5 + 0.5 * len({event.category for event in events}) / size)
+        "interests_match": sum(item[0] for item in signals) / size,
+        "swipe_history_match": sum(item[1] for item in signals) / size,
+        "category_match": (0.5 + 0.5 * len(set(categories)) / size)
         if query.vibe == "surprise"
-        else sum(event.category in VIBE_CATEGORIES[query.vibe] for event in events)
-        / size,
+        else sum(item[2] for item in signals) / size,
         "budget_match": 1 - float(raw_total / query.budget_max)
         if query.budget_max
         else 1,
         "distance_match": 1
         - sum(item.minutes for item in transitions) / len(transitions) / 30,
-        "popularity": sum(
-            popularity_score(popularity.get(event.id, ReactionCounts(0, 0)))
-            for event in events
-        )
-        / size,
+        "popularity": sum(item[3] for item in signals) / size,
     }
     components = {
         key: min(1.0, max(0.0, float(value))) for key, value in components.items()
     }
     return sum(components[key] * weight for key, weight in WEIGHTS.items()), components
+
+
+def score_route(
+    events, transitions, query, preference, liked, disliked, saved, popularity
+):
+    return cached_score(
+        [
+            event_signals(event, query, preference, liked, disliked, saved, popularity)
+            for event in events
+        ],
+        [event.category for event in events],
+        transitions,
+        query,
+        sum((estimated_price(event) or Decimal(0)) for event in events),
+    )
+
+
+def select_evening_route(
+    days, city, query, preference, liked, disliked, saved, popularity, excluded
+):
+    """Rank every feasible route using detached inputs; safe to run outside the event loop."""
+    had_route = False
+    for day in sorted(days):
+        events = sorted(
+            days[day], key=lambda event: (utc(event.start_date), str(event.id))
+        )
+        prices = [estimated_price(event) or Decimal(0) for event in events]
+        starts = [utc(event.start_date) for event in events]
+        ends = [utc(event.end_date) for event in events]
+        lengths = [
+            (end - start).total_seconds() / 60 for start, end in zip(starts, ends)
+        ]
+        ids = [str(event.id) for event in events]
+        signals = [
+            event_signals(event, query, preference, liked, disliked, saved, popularity)
+            for event in events
+        ]
+        edges = {}
+        for i, first in enumerate(events):
+            for j in range(i + 1, len(events)):
+                second = events[j]
+                if first.timezone != second.timezone:
+                    continue
+                movement = transfer(first, second)
+                if movement.minutes <= 30 and starts[j] >= ends[i] + timedelta(
+                    minutes=movement.minutes
+                ):
+                    edges[i, j] = movement
+        best = None
+
+        def consider(indices):
+            nonlocal best, had_route
+            route = [events[index] for index in indices]
+            duration = (ends[indices[-1]] - starts[indices[0]]).total_seconds() / 60
+            total = sum(prices[index] for index in indices)
+            if duration > query.duration_hours * 60 or (
+                query.budget_max is not None and total > query.budget_max
+            ):
+                return
+            had_route = True
+            if frozenset(event.id for event in route) in excluded:
+                return
+            movements = [edges[a, b] for a, b in zip(indices, indices[1:])]
+            score, components = cached_score(
+                [signals[index] for index in indices],
+                [event.category for event in route],
+                movements,
+                query,
+                total,
+            )
+            walking = sum(item.minutes for item in movements)
+            event_minutes = sum(lengths[index] for index in indices)
+            waiting = duration - event_minutes - walking
+            key = (
+                -score,
+                walking,
+                waiting,
+                total,
+                tuple(ids[index] for index in indices),
+            )
+            if best is None or key < best[0]:
+                best = (key, route, movements, score, components, duration)
+
+        successors = defaultdict(list)
+        for i, j in edges:
+            successors[i].append(j)
+        for i, following in successors.items():
+            for j in following:
+                consider((i, j))
+                for k in successors.get(j, ()):
+                    consider((i, j, k))
+        if best is None:
+            continue
+        _, route, movements, score, components, duration = best
+        items = []
+        for index, event in enumerate(route):
+            reasons = []
+            if interest_score(event, preference) >= 0.8:
+                reasons.append("По вашим интересам")
+            if event.id in saved:
+                reasons.append("Из вашего избранного")
+            if event.category in VIBE_CATEGORIES[query.vibe]:
+                reasons.append("Под настроение вечера")
+            items.append(
+                EveningStop(
+                    event=replace(
+                        event,
+                        start_date=utc(event.start_date),
+                        end_date=utc(event.end_date),
+                    ),
+                    estimated_price=rounded_price(estimated_price(event)),
+                    next_transfer=movements[index] if index < len(movements) else None,
+                    reasons=tuple(reasons),
+                )
+            )
+        selected = EveningRoute(
+            city=city,
+            date=day,
+            vibe=query.vibe,
+            duration_hours=query.duration_hours,
+            budget_max=query.budget_max,
+            events=tuple(items),
+            total_cost=sum(item.estimated_price or 0 for item in items),
+            cost_complete=all(item.estimated_price is not None for item in items),
+            duration_minutes=math.ceil(duration),
+            score=score,
+            score_components=EveningScore(**components),
+            reasons=("Площадки рядом", "Можно посетить последовательно"),
+        )
+        return selected, None
+    return None, "exhausted" if had_route and excluded else "no_matches"
 
 
 class EveningService:
@@ -226,118 +354,24 @@ class EveningService:
         popularity = await self.uow.reactions.popularity(
             user.id, tuple(event.id for events in days.values() for event in events)
         )
-        had_route = False
-        for day in sorted(days):
-            events = sorted(
-                days[day], key=lambda event: (utc(event.start_date), str(event.id))
-            )
-            edges = {}
-            for i, first in enumerate(events):
-                for j in range(i + 1, len(events)):
-                    second = events[j]
-                    if first.timezone != second.timezone:
-                        continue
-                    movement = transfer(first, second)
-                    if movement.minutes <= 30 and utc(second.start_date) >= utc(
-                        first.end_date
-                    ) + timedelta(minutes=movement.minutes):
-                        edges[i, j] = movement
-            best = None
-
-            def consider(indices):
-                nonlocal best, had_route
-                route = [events[index] for index in indices]
-                duration = (
-                    utc(route[-1].end_date) - utc(route[0].start_date)
-                ).total_seconds() / 60
-                total = sum((estimated_price(event) or Decimal(0)) for event in route)
-                if duration > query.duration_hours * 60 or (
-                    query.budget_max is not None and total > query.budget_max
-                ):
-                    return
-                had_route = True
-                if frozenset(event.id for event in route) in excluded:
-                    return
-                movements = [edges[a, b] for a, b in zip(indices, indices[1:])]
-                score, components = score_route(
-                    route,
-                    movements,
-                    query,
-                    preference,
-                    liked,
-                    disliked,
-                    saved,
-                    popularity,
-                )
-                walking = sum(item.minutes for item in movements)
-                event_minutes = sum(
-                    (utc(event.end_date) - utc(event.start_date)).total_seconds() / 60
-                    for event in route
-                )
-                waiting = duration - event_minutes - walking
-                key = (
-                    -score,
-                    walking,
-                    waiting,
-                    total,
-                    tuple(str(event.id) for event in route),
-                )
-                if best is None or key < best[0]:
-                    best = (key, route, movements, score, components, duration)
-
-            successors = defaultdict(list)
-            for i, j in edges:
-                successors[i].append(j)
-            for i, following in successors.items():
-                for j in following:
-                    consider((i, j))
-                    for k in successors.get(j, ()):
-                        consider((i, j, k))
-            if best is None:
-                continue
-            _, route, movements, score, components, duration = best
-            items = []
-            for index, event in enumerate(route):
-                reasons = []
-                if interest_score(event, preference) >= 0.8:
-                    reasons.append("По вашим интересам")
-                if event.id in saved:
-                    reasons.append("Из вашего избранного")
-                if event.category in VIBE_CATEGORIES[query.vibe]:
-                    reasons.append("Под настроение вечера")
-                items.append(
-                    EveningStop(
-                        event=replace(
-                            event,
-                            start_date=utc(event.start_date),
-                            end_date=utc(event.end_date),
-                        ),
-                        estimated_price=rounded_price(estimated_price(event)),
-                        next_transfer=movements[index]
-                        if index < len(movements)
-                        else None,
-                        reasons=tuple(reasons),
-                    )
-                )
-            selected = EveningRoute(
-                city=user.city,
-                date=day,
-                vibe=query.vibe,
-                duration_hours=query.duration_hours,
-                budget_max=query.budget_max,
-                events=tuple(items),
-                total_cost=sum(item.estimated_price or 0 for item in items),
-                cost_complete=all(item.estimated_price is not None for item in items),
-                duration_minutes=math.ceil(duration),
-                score=score,
-                score_components=EveningScore(**components),
-                reasons=("Площадки рядом", "Можно посетить последовательно"),
-            )
-            plan = EveningPlan(uuid4(), user.id, selected, now)
-            await self.uow.evenings.add(plan)
-            await self.uow.commit()
-            return plan, None
-        return None, "exhausted" if had_route and excluded else "no_matches"
+        selected, reason = await asyncio.to_thread(
+            select_evening_route,
+            days,
+            user.city,
+            query,
+            preference,
+            liked,
+            disliked,
+            saved,
+            popularity,
+            excluded,
+        )
+        if selected is None:
+            return None, reason
+        plan = EveningPlan(uuid4(), user.id, selected, now)
+        await self.uow.evenings.add(plan)
+        await self.uow.commit()
+        return plan, None
 
     async def get(self, user: User, plan_id: UUID) -> EveningPlan:
         return await self._owned(user, plan_id)
