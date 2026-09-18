@@ -114,9 +114,9 @@ test("mobile preferences, like, swipe, details, map and deep link", async ({
     "aria-busy",
     "false",
   );
-  await expect(
-    page.locator(".catalog-event .list-price").first(),
-  ).toHaveText("Бесплатно");
+  await expect(page.locator(".catalog-event .list-price").first()).toHaveText(
+    "Бесплатно",
+  );
   await page.getByRole("link", { name: "Карта", exact: true }).click();
   await page.getByRole("button", { name: "Для меня" }).click();
   await expect(page.locator(".event-map")).toBeVisible();
