@@ -869,6 +869,19 @@ h1 sup {
   .discover .swipe-help {
     display: none;
   }
+  .discover .card-content {
+    padding-top: 12px;
+    padding-bottom: 10px;
+  }
+  .discover .card-bottom {
+    margin-top: 14px;
+  }
+  .discover .match-reason {
+    margin-top: 12px;
+  }
+  .discover .reactions {
+    margin-top: 14px;
+  }
 }
 
 .swipe-card.dragging {
