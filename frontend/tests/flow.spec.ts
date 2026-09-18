@@ -100,11 +100,23 @@ test("mobile preferences, like, swipe, details, map and deep link", async ({
     "aria-pressed",
     "true",
   );
+  // Existing rows can still be visible while the filtered catalog is loading.
+  const freeCatalogResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.pathname === "/api/v1/events/catalog" &&
+      url.searchParams.get("free_only") === "true"
+    );
+  });
   await page.getByRole("button", { name: "Бесплатно", exact: true }).click();
-  await expect(page.locator(".catalog-event").first()).toBeVisible();
-  expect(
-    await page.locator(".catalog-event .list-price").allTextContents(),
-  ).toEqual(expect.arrayContaining(["Бесплатно"]));
+  expect((await freeCatalogResponse).status()).toBe(200);
+  await expect(page.locator(".catalog-results")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
+  await expect(page.locator(".catalog-event .list-price").first()).toHaveText(
+    "Бесплатно",
+  );
   await page.getByRole("link", { name: "Карта", exact: true }).click();
   await page.getByRole("button", { name: "Для меня" }).click();
   await expect(page.locator(".event-map")).toBeVisible();
