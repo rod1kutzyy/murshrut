@@ -139,3 +139,32 @@ TEST_REPOSITORY_DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/t
 - [MAX UI](https://dev.max.ru/ui) — используется опубликованный пакет 0.5.0; его TypeScript-типы (`Button.variant`) отличаются от примеров сайта (`mode`).
 - [PRO.Культура.РФ: API](https://pro.culture.ru/new/api/documentation)
 - [Официальное описание экспорта API 2.5](https://pro.culture.ru/documentation/export_API_PRO.pdf)
+
+## CI (GitHub Actions)
+
+Workflow `.github/workflows/ci.yml` запускается для pull request, push в `main` и вручную через вкладку Actions.
+
+- **Code quality**: Ruff проверяет Python на ошибки, Prettier — форматирование frontend, TypeScript и Vite — типы и сборку.
+- **Backend tests**: применяются миграции на пустой PostgreSQL 17, выполняется `alembic check`, затем весь набор pytest, включая repository на SQLite и PostgreSQL.
+- **Docker and browser tests**: собираются образы, запускается свежий Compose в деморежиме, ожидаются healthchecks, проверяются frontend и API через Nginx, выполняется Playwright Chromium.
+
+Задания выполняются параллельно. Новый запуск отменяет предыдущий для той же ветки/PR. Отчёты pytest, логи Compose, скриншоты и traces неуспешных браузерных тестов доступны в artifacts запуска в течение 7 дней. Браузерные тесты выполняются одним worker: демопрофиль общий. Данные CI удаляются вместе с volume после проверки. Внешние ключи и GitHub Secrets не нужны.
+
+Форматирование Python вводится постепенно: Ruff проверяет формат только добавленных и изменённых Python-файлов относительно базы PR или предыдущего push. Старый код пока не переформатируется целиком. При ручном запуске проверяются остальные проверки, а список изменённых Python-файлов пуст. Линтер всегда проверяет весь backend.
+
+Локальные проверки:
+
+```bash
+python -m pip install -r backend/requirements-dev.txt
+python -m ruff check backend
+# Перед коммитом форматировать изменённые Python-файлы:
+python -m ruff format path/to/changed_file.py
+cd frontend
+npm ci
+npm run format:check
+npm run build
+```
+
+Чтобы запретить слияние при ошибках CI, в GitHub Settings → Rules → Rulesets настройте правило для `main` с обязательными status checks: `Code quality`, `Backend tests`, `Docker and browser tests`. Сам workflow не меняет настройки репозитория.
+
+Автоматический деплой и публикация образов пока не настроены: приложение работает локально.
