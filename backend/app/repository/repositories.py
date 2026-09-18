@@ -11,6 +11,7 @@ from ..service.entities import (
     EveningPlan as EveningEntity,
     Identity,
     Preferences,
+    ReactionCounts,
 )
 from ..service.ports import (
     EveningRepositoryPort,
@@ -22,6 +23,7 @@ from ..service.ports import (
 from .models import Event, EventReaction, EveningPlan, User, UserPreference
 from .mappers import (
     evening_from_model,
+    evening_to_snapshot,
     event_from_model,
     event_to_values,
     identity_to_values,
@@ -247,7 +249,10 @@ class ReactionRepository(ReactionRepositoryPort):
                 .group_by(EventReaction.event_id)
             )
         ).all()
-        return {event_id: (likes + 2) / (total + 4) for event_id, likes, total in rows}
+        return {
+            event_id: ReactionCounts(int(likes), int(total))
+            for event_id, likes, total in rows
+        }
 
 
 class EveningRepository(EveningRepositoryPort):
@@ -259,7 +264,7 @@ class EveningRepository(EveningRepositoryPort):
             EveningPlan(
                 id=plan.id,
                 user_id=plan.user_id,
-                snapshot=plan.snapshot,
+                snapshot=evening_to_snapshot(plan.route),
                 created_at=plan.created_at,
                 saved_at=None,
             )

@@ -1,16 +1,25 @@
 """Feasible evening routes first, normalized personal scoring second."""
 
 from collections import Counter, defaultdict
-from dataclasses import asdict
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
-import json
 import math
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .commands import EveningQuery
-from .entities import EveningPlan
+from .entities import (
+    EveningPlan,
+    EveningRoute,
+    EveningStop,
+    EveningTransfer,
+    EveningScore,
+    ReactionCounts,
+    User,
+)
+from .ports import ClockPort, UnitOfWorkPort
+from .sync import EventSyncService
 from .errors import InvalidInput, NotFound, OnboardingRequired
 
 WEIGHTS = {
@@ -64,10 +73,7 @@ def transfer(first, second):
         + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2
     )
     distance = 6371 * 2 * math.asin(math.sqrt(min(1, max(0, hav)))) * 1.3
-    return {
-        "distance_km": round(distance, 2),
-        "minutes": math.ceil(distance / 4 * 60) + 10,
-    }
+    return EveningTransfer(round(distance, 2), math.ceil(distance / 4 * 60) + 10)
 
 
 def interest_score(event, preference):
@@ -88,6 +94,10 @@ def interest_score(event, preference):
         + 0.05 * days
         + 0.05 * (preference.preferred_time in {"any", period})
     )
+
+
+def popularity_score(counts: ReactionCounts) -> float:
+    return (counts.likes + 2) / (counts.total + 4)
 
 
 def score_route(
@@ -114,8 +124,12 @@ def score_route(
         if query.budget_max
         else 1,
         "distance_match": 1
-        - sum(item["minutes"] for item in transitions) / len(transitions) / 30,
-        "popularity": sum(popularity.get(event.id, 0.5) for event in events) / size,
+        - sum(item.minutes for item in transitions) / len(transitions) / 30,
+        "popularity": sum(
+            popularity_score(popularity.get(event.id, ReactionCounts(0, 0)))
+            for event in events
+        )
+        / size,
     }
     components = {
         key: min(1.0, max(0.0, float(value))) for key, value in components.items()
@@ -124,16 +138,24 @@ def score_route(
 
 
 class EveningService:
-    def __init__(self, uow, sync, clock, provider):
+    def __init__(
+        self,
+        uow: UnitOfWorkPort,
+        sync: EventSyncService,
+        clock: ClockPort,
+        provider: str,
+    ):
         self.uow, self.sync, self.clock, self.provider = uow, sync, clock, provider
 
-    async def _owned(self, user, plan_id):
+    async def _owned(self, user: User, plan_id: UUID) -> EveningPlan:
         plan = await self.uow.evenings.get(plan_id, user.id)
         if plan is None:
             raise NotFound("План вечера не найден")
         return plan
 
-    async def generate(self, user, query: EveningQuery):
+    async def generate(
+        self, user: User, query: EveningQuery
+    ) -> tuple[EveningPlan | None, str | None]:
         if not user.onboarding_completed:
             raise OnboardingRequired("Сначала заполните анкету")
         if (
@@ -145,7 +167,7 @@ class EveningService:
         excluded = set()
         for plan_id in query.excluded_plan_ids:
             plan = await self._owned(user, plan_id)
-            excluded.add(frozenset(item["id"] for item in plan.snapshot["events"]))
+            excluded.add(frozenset(stop.event.id for stop in plan.route.events))
         await self.sync.ensure(user.city)
         now = utc(self.clock.now())
         preference = await self.uow.preferences.get(user.id)
@@ -216,9 +238,9 @@ class EveningService:
                     if first.timezone != second.timezone:
                         continue
                     movement = transfer(first, second)
-                    if movement["minutes"] <= 30 and utc(second.start_date) >= utc(
+                    if movement.minutes <= 30 and utc(second.start_date) >= utc(
                         first.end_date
-                    ) + timedelta(minutes=movement["minutes"]):
+                    ) + timedelta(minutes=movement.minutes):
                         edges[i, j] = movement
             best = None
 
@@ -234,7 +256,7 @@ class EveningService:
                 ):
                     return
                 had_route = True
-                if frozenset(str(event.id) for event in route) in excluded:
+                if frozenset(event.id for event in route) in excluded:
                     return
                 movements = [edges[a, b] for a, b in zip(indices, indices[1:])]
                 score, components = score_route(
@@ -247,7 +269,7 @@ class EveningService:
                     saved,
                     popularity,
                 )
-                walking = sum(item["minutes"] for item in movements)
+                walking = sum(item.minutes for item in movements)
                 event_minutes = sum(
                     (utc(event.end_date) - utc(event.start_date)).total_seconds() / 60
                     for event in route
@@ -276,81 +298,73 @@ class EveningService:
             _, route, movements, score, components, duration = best
             items = []
             for index, event in enumerate(route):
-                item = asdict(event)
-                item["start_date"], item["end_date"] = (
-                    utc(event.start_date),
-                    utc(event.end_date),
-                )
-                item["estimated_price"] = rounded_price(estimated_price(event))
-                item["next_transfer"] = (
-                    movements[index] if index < len(movements) else None
-                )
-                item["reasons"] = []
+                reasons = []
                 if interest_score(event, preference) >= 0.8:
-                    item["reasons"].append("По вашим интересам")
+                    reasons.append("По вашим интересам")
                 if event.id in saved:
-                    item["reasons"].append("Из вашего избранного")
+                    reasons.append("Из вашего избранного")
                 if event.category in VIBE_CATEGORIES[query.vibe]:
-                    item["reasons"].append("Под настроение вечера")
-                items.append(item)
-            snapshot = {
-                "city": user.city,
-                "date": day.isoformat(),
-                "vibe": query.vibe,
-                "duration_hours": query.duration_hours,
-                "budget_max": query.budget_max,
-                "events": items,
-                "event_count": len(items),
-                "total_cost": sum(item["estimated_price"] or 0 for item in items),
-                "cost_complete": all(
-                    item["estimated_price"] is not None for item in items
-                ),
-                "duration_minutes": math.ceil(duration),
-                "score": score,
-                "score_components": components,
-                "reasons": ["Площадки рядом", "Можно посетить последовательно"],
-            }
-            snapshot = json.loads(
-                json.dumps(
-                    snapshot,
-                    default=lambda value: value.isoformat()
-                    if isinstance(value, datetime)
-                    else str(value),
+                    reasons.append("Под настроение вечера")
+                items.append(
+                    EveningStop(
+                        event=replace(
+                            event,
+                            start_date=utc(event.start_date),
+                            end_date=utc(event.end_date),
+                        ),
+                        estimated_price=rounded_price(estimated_price(event)),
+                        next_transfer=movements[index]
+                        if index < len(movements)
+                        else None,
+                        reasons=tuple(reasons),
+                    )
                 )
+            selected = EveningRoute(
+                city=user.city,
+                date=day,
+                vibe=query.vibe,
+                duration_hours=query.duration_hours,
+                budget_max=query.budget_max,
+                events=tuple(items),
+                total_cost=sum(item.estimated_price or 0 for item in items),
+                cost_complete=all(item.estimated_price is not None for item in items),
+                duration_minutes=math.ceil(duration),
+                score=score,
+                score_components=EveningScore(**components),
+                reasons=("Площадки рядом", "Можно посетить последовательно"),
             )
-            plan = EveningPlan(uuid4(), user.id, snapshot, now)
+            plan = EveningPlan(uuid4(), user.id, selected, now)
             await self.uow.evenings.add(plan)
             await self.uow.commit()
             return plan, None
         return None, "exhausted" if had_route and excluded else "no_matches"
 
-    async def get(self, user, plan_id):
+    async def get(self, user: User, plan_id: UUID) -> EveningPlan:
         return await self._owned(user, plan_id)
 
-    async def save(self, user, plan_id):
+    async def save(self, user: User, plan_id: UUID) -> EveningPlan:
         await self._owned(user, plan_id)
         plan = await self.uow.evenings.save(plan_id, user.id, self.clock.now())
         await self.uow.commit()
         return plan
 
-    async def saved(self, user):
+    async def saved(self, user: User) -> list[EveningPlan]:
         return await self.uow.evenings.saved(user.id)
 
-    async def warnings(self, plan):
+    async def warnings(self, plan: EveningPlan) -> list[str]:
         warnings = []
-        if utc(datetime.fromisoformat(plan.snapshot["events"][-1]["end_date"])) <= utc(
-            self.clock.now()
-        ):
+        if utc(plan.route.events[-1].event.end_date) <= utc(self.clock.now()):
             warnings.append("Этот вечер уже завершился")
-        for item in plan.snapshot["events"]:
-            current = await self.uow.events.get(UUID(item["id"]))
+        for stop in plan.route.events:
+            item = stop.event
+            current = await self.uow.events.get(item.id)
             if current is None or current.provider != self.provider:
-                warnings.append(f"Событие «{item['title']}» больше недоступно")
+                warnings.append(f"Событие «{item.title}» больше недоступно")
             elif (
-                utc(current.start_date).isoformat() != item["start_date"]
-                or utc(current.end_date).isoformat() != item["end_date"]
+                utc(current.start_date) != utc(item.start_date)
+                or utc(current.end_date) != utc(item.end_date)
                 or any(
-                    getattr(current, key) != item[key]
+                    getattr(current, key) != getattr(item, key)
                     for key in (
                         "location_name",
                         "address",
@@ -363,6 +377,6 @@ class EveningService:
                 )
             ):
                 warnings.append(
-                    f"У события «{item['title']}» изменились условия. Проверьте карточку"
+                    f"У события «{item.title}» изменились условия. Проверьте карточку"
                 )
         return warnings

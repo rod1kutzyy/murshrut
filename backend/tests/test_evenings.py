@@ -9,6 +9,7 @@ import pytest
 from app.service.commands import EveningQuery
 from app.service.entities import Preferences, Reaction
 from app.service.errors import InvalidInput, NotFound, OnboardingRequired
+from app.service.entities import ReactionCounts
 from app.service.evenings import (
     EveningService,
     WEIGHTS,
@@ -153,7 +154,7 @@ def test_personal_signals_favorites_and_surprise_diversity():
         Counter(kino=3),
         Counter(kino=1),
         {art.id},
-        {movie.id: 0.9},
+        {movie.id: ReactionCounts(34, 36)},
     )
     assert parts["swipe_history_match"] == pytest.approx((4 / 6 + 1) / 2)
     assert parts["category_match"] == 1
@@ -187,15 +188,15 @@ async def test_route_is_ordered_feasible_saves_without_event_reactions_and_exclu
     uow = MemoryUow([second, first])
     engine = service(uow)
     plan, reason = await engine.generate(USER, OPTIONS)
-    assert reason is None and plan.snapshot["event_count"] == 2
-    assert [item["id"] for item in plan.snapshot["events"]] == [
-        str(first.id),
-        str(second.id),
+    assert reason is None and plan.route.event_count == 2
+    assert [item.event.id for item in plan.route.events] == [
+        first.id,
+        second.id,
     ]
-    assert plan.snapshot["duration_minutes"] == 105
-    assert plan.snapshot["total_cost"] == 800
-    assert plan.snapshot["events"][0]["next_transfer"]["minutes"] == 10
-    assert plan.snapshot["events"][1]["next_transfer"] is None
+    assert plan.route.duration_minutes == 105
+    assert plan.route.total_cost == 800
+    assert plan.route.events[0].next_transfer.minutes == 10
+    assert plan.route.events[1].next_transfer is None
     assert not plan.saved and await engine.saved(USER) == []
     saved = await engine.save(USER, plan.id)
     assert saved.saved and (await engine.save(USER, plan.id)).id == plan.id
@@ -230,8 +231,8 @@ async def test_short_route_and_three_event_route():
         plan, _ = await engine.generate(
             USER, EveningQuery("surprise", 2, 3000, tuple(shown))
         )
-        assert plan is not None and plan.snapshot["duration_minutes"] <= 120
-        sizes.add(plan.snapshot["event_count"])
+        assert plan is not None and plan.route.duration_minutes <= 120
+        sizes.add(plan.route.event_count)
         shown.append(plan.id)
     assert sizes == {2, 3}
 
@@ -269,7 +270,7 @@ async def test_high_scores_never_override_feasibility(invalid):
     uow = MemoryUow(
         [first, second],
         preferences=Preferences(("kino",), None, "friends", "any", "evening"),
-        popularity={second.id: 1},
+        popularity={second.id: ReactionCounts(10000, 10000)},
     )
     result, reason = await service(uow).generate(USER, OPTIONS)
     assert result is None and reason == "no_matches"
@@ -290,7 +291,7 @@ async def test_budget_before_rounding_and_free_requires_explicit_flag():
     plan, _ = await service(MemoryUow(free)).generate(
         USER, replace(OPTIONS, budget_max=0)
     )
-    assert plan.snapshot["total_cost"] == 0
+    assert plan.route.total_cost == 0
 
 
 @pytest.mark.asyncio
@@ -300,7 +301,7 @@ async def test_unknown_price_unlimited_and_dislike_exclusion():
     engine = service(uow)
     assert (await engine.generate(USER, OPTIONS))[0] is None
     plan, _ = await engine.generate(USER, replace(OPTIONS, budget_max=None))
-    assert not plan.snapshot["cost_complete"] and plan.snapshot["total_cost"] == 400
+    assert not plan.route.cost_complete and plan.route.total_cost == 400
     uow.history_rows = [Reaction(first.id, "kino", "dislike")]
     assert (await engine.generate(USER, replace(OPTIONS, budget_max=None)))[0] is None
     uow.history_rows = [Reaction(first.id, "kino", "like")]
@@ -322,18 +323,18 @@ async def test_date_today_lead_time_and_inclusive_seventh_day():
     assert (await engine.generate(USER, OPTIONS))[0] is not None
     seventh = [event(day=10), event(day=10, hour=16)]
     plan, _ = await service(MemoryUow(seventh)).generate(USER, OPTIONS)
-    assert plan.snapshot["date"] == "2030-01-10"
+    assert plan.route.date.isoformat() == "2030-01-10"
     earlier = [event(day=5), event(day=5, hour=16)]
     plan, _ = await service(MemoryUow(seventh + earlier)).generate(USER, OPTIONS)
-    assert plan.snapshot["date"] == "2030-01-05"
+    assert plan.route.date.isoformat() == "2030-01-05"
 
 
 @pytest.mark.asyncio
 async def test_midnight_end_allowed_but_crossing_midnight_excluded():
     first, second = event(hour=19), event(hour=20, minute=15)
     plan, _ = await service(MemoryUow([first, second])).generate(USER, OPTIONS)
-    assert (
-        plan and plan.snapshot["events"][-1]["end_date"] == "2030-01-04T21:00:00+00:00"
+    assert plan and plan.route.events[-1].event.end_date == datetime.fromisoformat(
+        "2030-01-04T21:00:00+00:00"
     )
     assert (
         await service(
@@ -354,16 +355,16 @@ async def test_other_timezone_uses_city_local_evening():
         replace(event(hour=14), timezone="Asia/Yekaterinburg"),
     ]
     plan, _ = await service(MemoryUow(rows)).generate(USER, OPTIONS)
-    assert plan and plan.snapshot["date"] == "2030-01-04"
+    assert plan and plan.route.date.isoformat() == "2030-01-04"
 
 
 @pytest.mark.asyncio
 async def test_distance_improves_ranking_with_equal_signals():
     first, close, far = event(), event(hour=16), replace(event(hour=16), latitude=55.76)
     plan, _ = await service(MemoryUow([first, far, close])).generate(USER, OPTIONS)
-    assert [item["id"] for item in plan.snapshot["events"]] == [
-        str(first.id),
-        str(close.id),
+    assert [item.event.id for item in plan.route.events] == [
+        first.id,
+        close.id,
     ]
 
 
@@ -381,9 +382,9 @@ async def test_warnings_keep_snapshot_after_change_cancellation_and_expiry():
         and "изменились" in warnings[0]
         and "недоступно" in warnings[1]
     )
-    assert (await engine.get(USER, plan.id)).snapshot["events"][0][
-        "start_date"
-    ] == first.start_date.isoformat()
+    assert (await engine.get(USER, plan.id)).route.events[
+        0
+    ].event.start_date == first.start_date
     assert (
         "завершился" in (await service(uow, NOW + timedelta(days=1)).warnings(plan))[0]
     )
@@ -428,3 +429,54 @@ async def test_exact_transition_boundary_requires_the_full_buffer():
     assert (await service(MemoryUow([first, boundary])).generate(USER, OPTIONS))[0]
     early = replace(boundary, start_date=boundary.start_date - timedelta(seconds=1))
     assert (await service(MemoryUow([first, early])).generate(USER, OPTIONS))[0] is None
+
+
+@pytest.mark.asyncio
+async def test_legacy_snapshot_roundtrip_and_http_collections_are_detached():
+    from dataclasses import asdict
+    import json
+
+    from app.repository.mappers import evening_route_from_snapshot, evening_to_snapshot
+    from app.transport.mappers import evening_to_response
+
+    plan, _ = await service(MemoryUow([event(), event(hour=16)])).generate(
+        USER, OPTIONS
+    )
+    stored = evening_to_snapshot(plan.route)
+    # Reproduce the JSON layout written by the first feature version.
+    legacy = dict(stored)
+    legacy["events"] = [
+        dict(
+            asdict(stop.event),
+            estimated_price=stop.estimated_price,
+            next_transfer=asdict(stop.next_transfer) if stop.next_transfer else None,
+            reasons=list(stop.reasons),
+        )
+        for stop in plan.route.events
+    ]
+    legacy = json.loads(
+        json.dumps(
+            legacy,
+            default=lambda value: value.isoformat()
+            if isinstance(value, datetime)
+            else str(value),
+        )
+    )
+    assert legacy == stored
+    restored = evening_route_from_snapshot(legacy)
+    assert restored == plan.route
+    legacy["events"][0]["tags"].append("modified")
+    legacy["events"][0]["reasons"].append("modified")
+    assert restored == plan.route
+    response = evening_to_response(plan, [])
+    response.events[0].tags.append("modified")
+    response.reasons.append("modified")
+    assert evening_to_snapshot(plan.route) == stored
+
+
+def test_popularity_smoothing_is_a_service_rule():
+    from app.service.evenings import popularity_score
+
+    assert popularity_score(ReactionCounts(0, 0)) == 0.5
+    assert popularity_score(ReactionCounts(1, 1)) == 0.6
+    assert popularity_score(ReactionCounts(0, 1)) == 0.4

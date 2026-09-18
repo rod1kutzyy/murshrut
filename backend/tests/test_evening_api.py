@@ -147,7 +147,13 @@ async def test_repository_popularity_excludes_self_and_plans_survive_event_remov
     sessions,
 ):
     from app.repository.unit_of_work import SqlAlchemyUnitOfWork
-    from app.service.entities import EveningPlan
+    from app.service.entities import (
+        EveningPlan,
+        EveningRoute,
+        EveningStop,
+        EveningScore,
+        ReactionCounts,
+    )
 
     async with SqlAlchemyUnitOfWork(sessions) as uow:
         user = await uow.users.upsert_identity(Identity(555), NOW)
@@ -161,13 +167,29 @@ async def test_repository_popularity_excludes_self_and_plans_survive_event_remov
         await uow.reactions.save(other.id, row.id, "like")
         assert (await uow.reactions.popularity(user.id, (row.id,)))[
             row.id
-        ] == pytest.approx(0.6)
+        ] == ReactionCounts(1, 1)
         await uow.reactions.save(other.id, row.id, "dislike")
         assert (await uow.reactions.popularity(user.id, (row.id,)))[
             row.id
-        ] == pytest.approx(0.4)
+        ] == ReactionCounts(0, 1)
         plan = EveningPlan(
-            uuid4(), user.id, {"events": [{"id": str(row.id), "title": row.title}]}, NOW
+            uuid4(),
+            user.id,
+            EveningRoute(
+                "Москва",
+                NOW.date(),
+                "calm",
+                2,
+                1000,
+                (EveningStop(row, 400, None, ()),),
+                400,
+                True,
+                45,
+                0.5,
+                EveningScore(0.5, 0.5, 1, 0.6, 1, 0.5),
+                (),
+            ),
+            NOW,
         )
         await uow.evenings.add(plan)
         await uow.commit()
@@ -178,7 +200,7 @@ async def test_repository_popularity_excludes_self_and_plans_survive_event_remov
         await uow.commit()
     async with SqlAlchemyUnitOfWork(sessions) as uow:
         restored = await uow.evenings.get(plan.id, user.id)
-        assert restored.saved and restored.snapshot == plan.snapshot
+        assert restored.saved and restored.route == plan.route
         assert await uow.evenings.get(plan.id, other.id) is None
         assert await uow.evenings.save(plan.id, other.id, NOW) is None
         assert len(await uow.evenings.saved(user.id)) == 1

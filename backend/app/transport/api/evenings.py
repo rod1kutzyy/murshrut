@@ -1,9 +1,9 @@
 from uuid import UUID
 from fastapi import APIRouter, Depends
 
-from ...service.commands import EveningQuery
 from ...service.entities import User
 from ...service.facade import Services
+from ..mappers import evening_to_query, evening_to_response
 from .dependencies import current_user, get_services
 from .schemas import EveningInput, EveningOut, EveningGenerationOut
 
@@ -11,13 +11,7 @@ router = APIRouter(prefix="/api/v1/evenings", tags=["evenings"])
 
 
 async def response(plan, services):
-    return EveningOut(
-        **plan.snapshot,
-        id=plan.id,
-        saved=plan.saved,
-        created_at=plan.created_at,
-        warnings=await services.evenings.warnings(plan),
-    )
+    return evening_to_response(plan, await services.evenings.warnings(plan))
 
 
 @router.post("/generate", response_model=EveningGenerationOut)
@@ -28,12 +22,7 @@ async def generate(
 ):
     plan, reason = await services.evenings.generate(
         user,
-        EveningQuery(
-            body.vibe,
-            body.duration_hours,
-            body.budget_max,
-            tuple(body.excluded_plan_ids),
-        ),
+        evening_to_query(body),
     )
     return EveningGenerationOut(
         plan=await response(plan, services) if plan else None, reason=reason

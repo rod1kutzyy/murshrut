@@ -10,6 +10,7 @@ from .entities import (
     Identity,
     Preferences,
     Reaction,
+    ReactionCounts,
     User,
 )
 
@@ -47,7 +48,7 @@ class ReactionRepositoryPort(Protocol):
     async def remove(self, user_id: UUID, event_id: UUID) -> bool: ...
     async def popularity(
         self, user_id: UUID, event_ids: tuple[UUID, ...]
-    ) -> dict[UUID, float]: ...
+    ) -> dict[UUID, ReactionCounts]: ...
 
 
 class EveningRepositoryPort(Protocol):
