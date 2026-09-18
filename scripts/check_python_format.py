@@ -19,7 +19,7 @@ def main() -> int:
     if not files:
         print("No changed Python files to check.")
         return 0
-    return subprocess.call([sys.executable, "-m", "ruff", "format", "--check", *files])
+    return subprocess.call([sys.executable, "-m", "ruff", "format", "--diff", *files])
 
 
 if __name__ == "__main__":
