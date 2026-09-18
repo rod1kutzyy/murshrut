@@ -6,8 +6,12 @@ dist/
 .venv/
 __pycache__/
 .pytest_cache/
+.ruff_cache/
 *.db
 *.db-*
 frontend/test-results/
 frontend/playwright-report/
 *.tsbuildinfo
+
+# Local reproduction of CI reports
+/test-results/

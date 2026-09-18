@@ -25,6 +25,10 @@ test.beforeEach(async ({ page }) => {
   );
   await page.route("**/api/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path === "/api/v1/evenings") {
+      await route.fulfill({ json: [] });
+      return;
+    }
     const data = path.endsWith("/config")
       ? { demo_mode: true, event_provider: "demo" }
       : path.endsWith("/auth/demo")

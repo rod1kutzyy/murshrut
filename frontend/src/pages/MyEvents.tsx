@@ -9,7 +9,8 @@ import {
   Compass,
   ArrowRight,
 } from "lucide-react";
-import type { Event } from "../types";
+import type { EveningPlan, Event } from "../types";
+import { eveningCost, eveningDate, eveningDuration } from "../evening";
 import { date, time, price } from "../utils";
 import { Mascot } from "../components/Mascot";
 import { EventImage } from "../components/EventImage";
@@ -21,6 +22,27 @@ export default function MyEvents() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
+  const [plans, setPlans] = useState<EveningPlan[]>([]);
+  const [planError, setPlanError] = useState("");
+  const [plansLoading, setPlansLoading] = useState(true);
+  useEffect(() => {
+    let active = true;
+    setPlanError("");
+    setPlansLoading(true);
+    api<EveningPlan[]>("/evenings")
+      .then((data) => {
+        if (active) setPlans(data);
+      })
+      .catch((e) => {
+        if (active) setPlanError(e.message);
+      })
+      .finally(() => {
+        if (active) setPlansLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [retry]);
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -75,7 +97,50 @@ export default function MyEvents() {
         </p>
         <Sparkles size={20} />
       </div>
-      {loading ? (
+      <button className="evening-entry" onClick={() => navigate("/evening")}>
+        <Sparkles size={20} />
+        <span>
+          Собери мой вечер<small>Готовый маршрут под ваше настроение</small>
+        </span>
+        <ChevronRight size={18} />
+      </button>
+      <ErrorMessage message={planError} />
+      {planError && (
+        <button
+          className="text-button"
+          onClick={() => setRetry((value) => value + 1)}
+        >
+          Повторить загрузку вечеров
+        </button>
+      )}
+      {!!plans.length && (
+        <div className="saved-evenings">
+          <h2>Мои вечера</h2>
+          {plans.map((plan) => (
+            <button
+              className="saved-evening"
+              key={plan.id}
+              onClick={() => navigate(`/evenings/${plan.id}`)}
+            >
+              <strong>{eveningDate(plan)}</strong>
+              <span>
+                {plan.city} · {plan.event_count} событий ·{" "}
+                {eveningDuration(plan.duration_minutes)}
+              </span>
+              <span>{eveningCost(plan)}</span>
+              <small>
+                {plan.events.map((event) => event.title).join(" → ")}
+              </small>
+              {!!plan.warnings.length && (
+                <small className="evening-outdated">
+                  Проверьте актуальность вечера
+                </small>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+      {loading || plansLoading ? (
         <State title="Собираю ваши планы…" loading />
       ) : error ? (
         <State
@@ -110,7 +175,7 @@ export default function MyEvents() {
             </button>
           ))}
         </div>
-      ) : (
+      ) : plans.length ? null : (
         <State
           title="Пока без планов"
           text="Свайпните событие вправо — Мур сохранит его здесь."

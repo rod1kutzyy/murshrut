@@ -55,6 +55,7 @@ async function mockApp(page: Page, available = categories) {
           onboarding_completed: true,
         },
       };
+    else if (path === "/api/v1/evenings") data = [];
     else if (path.endsWith("/categories")) data = available;
     else if (path.endsWith("/recommendations"))
       data = events.filter((event) => !saved.has(event.id));

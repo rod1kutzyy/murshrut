@@ -1,5 +1,5 @@
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { SlidersHorizontal } from "lucide-react";
+import { Sparkles, SlidersHorizontal } from "lucide-react";
 import type { User } from "../types";
 import SwipeDiscovery from "../components/SwipeDiscovery";
 import Catalog from "../components/Catalog";
@@ -30,9 +30,14 @@ export default function Discover({ user }: { user: User }) {
           <SlidersHorizontal size={22} />
         </button>
       </div>
-      <p className="subtitle discover-subtitle">
-        {user.city} · события и новые впечатления
-      </p>
+      <button
+        className="evening-entry evening-entry-discover"
+        onClick={() => navigate("/evening")}
+      >
+        <Sparkles size={17} />
+        <span>Собери мой вечер</span>
+        <span aria-hidden="true">→</span>
+      </button>
       <div className="segmented discovery-modes" aria-label="Режим поиска">
         <button
           className={!catalog ? "active" : ""}

@@ -2,7 +2,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ..service.ports import UnitOfWorkPort
-from .repositories import EventRepository, PreferencesRepository, ReactionRepository, UserRepository
+from .repositories import (
+    EveningRepository,
+    EventRepository,
+    PreferencesRepository,
+    ReactionRepository,
+    UserRepository,
+)
 
 
 class SqlAlchemyUnitOfWork(UnitOfWorkPort):
@@ -15,6 +21,7 @@ class SqlAlchemyUnitOfWork(UnitOfWorkPort):
         self.preferences = PreferencesRepository(self._session)
         self.events = EventRepository(self._session)
         self.reactions = ReactionRepository(self._session)
+        self.evenings = EveningRepository(self._session)
         return self
 
     async def __aexit__(self, exc_type, exc, traceback):
@@ -30,4 +37,4 @@ class SqlAlchemyUnitOfWork(UnitOfWorkPort):
         await self._session.rollback()
 
     async def ping(self):
-        await self._session.execute(text('SELECT 1'))
+        await self._session.execute(text("SELECT 1"))
