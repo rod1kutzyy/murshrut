@@ -21,7 +21,7 @@ test("mobile preferences, like, swipe, details, map and deep link", async ({
     await expect(page.getByLabel("В каком городе ищем?")).toBeVisible();
     await page.getByLabel("В каком городе ищем?").selectOption("Москва");
     await page.getByRole("button", { name: /Сохранить предпочтения/ }).click();
-    await page.getByRole("link", { name: "Открывать" }).click();
+    await page.getByRole("link", { name: "Открыть" }).click();
   }
   await expect(page.locator(".swipe-card")).toBeVisible();
   await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
@@ -71,7 +71,7 @@ test("mobile preferences, like, swipe, details, map and deep link", async ({
   ).toBeVisible();
   await page.getByRole("button", { name: /Убрать из моих событий/ }).click();
   await expect(page.getByRole("button", { name: "Хочу пойти" })).toBeVisible();
-  await page.getByRole("link", { name: "Открывать" }).click();
+  await page.getByRole("link", { name: "Открыть" }).click();
   await expect(page.locator(".swipe-card")).toBeVisible();
   const skipped = await page.locator(".swipe-card h2").innerText();
   const card = await page.locator(".hero-image").boundingBox();

@@ -23,6 +23,9 @@ export function EventMap({
         : [55.7558, 37.6173],
       12,
     );
+    map.attributionControl.setPrefix(
+      '<a href="https://leafletjs.com/">Leaflet</a>',
+    );
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution:
         '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',

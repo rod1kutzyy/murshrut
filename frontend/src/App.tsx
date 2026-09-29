@@ -159,7 +159,7 @@ export default function App() {
         </NavLink>
         <NavLink to="/discover">
           <Compass size={21} />
-          <span>Открывать</span>
+          <span>Открыть</span>
         </NavLink>
         <NavLink to="/map">
           <MapIcon size={21} />
