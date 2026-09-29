@@ -52,6 +52,7 @@ class MemoryUow(FakeUow):
             get=self.get_plan,
             save=self.save_plan,
             saved=self.saved_plans,
+            delete=self.delete_plan,
         )
 
     async def get_event(self, event_id):
@@ -80,6 +81,13 @@ class MemoryUow(FakeUow):
             for plan in self.plans.values()
             if plan.saved and plan.user_id == user_id
         ]
+
+    async def delete_plan(self, plan_id, user_id):
+        plan = await self.get_plan(plan_id, user_id)
+        if plan is None:
+            return False
+        del self.plans[plan_id]
+        return True
 
 
 def service(uow, now=NOW):
@@ -213,6 +221,12 @@ async def test_route_is_ordered_feasible_saves_without_event_reactions_and_exclu
         await engine.save(other, plan.id)
     with pytest.raises(NotFound):
         await engine.generate(other, replace(OPTIONS, excluded_plan_ids=(plan.id,)))
+    with pytest.raises(NotFound):
+        await engine.delete(other, plan.id)
+    await engine.delete(USER, plan.id)
+    assert await engine.saved(USER) == []
+    with pytest.raises(NotFound):
+        await engine.get(USER, plan.id)
 
 
 @pytest.mark.asyncio

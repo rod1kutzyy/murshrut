@@ -116,23 +116,48 @@ async def test_uncommitted_changes_are_rolled_back(sessions):
 
 @pytest.mark.asyncio
 async def test_reactions_favorites_and_provider_isolation(sessions):
+    now = datetime.now(timezone.utc)
     async with SqlAlchemyUnitOfWork(sessions) as uow:
         user = await uow.users.upsert_identity(Identity(456), datetime.now(timezone.utc))
         for provider in ('demo', 'culture'):
             await uow.events.upsert(make_event(provider=provider))
-        demo = (await uow.events.available('Москва', 'demo', datetime.now(timezone.utc)))[0]
-        culture = (await uow.events.available('Москва', 'culture', datetime.now(timezone.utc)))[0]
+        demo = (await uow.events.available('Москва', 'demo', now))[0]
+        culture = (await uow.events.available('Москва', 'culture', now))[0]
         for row in (demo, culture):
             await uow.reactions.save(user.id, row.id, 'like')
         await uow.commit()
-        assert await uow.events.favorites(user.id, 'demo') == [demo]
-        assert await uow.events.favorites(uuid4(), 'demo') == []
+        assert await uow.events.favorites(user.id, 'demo', now) == [demo]
+        assert await uow.events.favorites(uuid4(), 'demo', now) == []
         assert await uow.reactions.saved_ids(user.id) == {demo.id, culture.id}
         assert await uow.reactions.remove(user.id, demo.id)
         assert not await uow.reactions.remove(user.id, demo.id)
         await uow.commit()
-        assert await uow.events.favorites(user.id, 'demo') == []
+        assert await uow.events.favorites(user.id, 'demo', now) == []
         assert await uow.events.available('Казань', 'demo', datetime.now(timezone.utc)) == []
+
+
+@pytest.mark.asyncio
+async def test_expired_events_are_hidden_without_losing_reactions(sessions):
+    now = datetime(2030, 1, 5, 18, tzinfo=timezone.utc)
+    future = make_event(title='Будущее', start_date=now, end_date=now.replace(hour=19))
+    ending_now = make_event(title='Завершается сейчас', start_date=now.replace(hour=17), end_date=now)
+    expired = make_event(title='Завершённое', start_date=now.replace(hour=16), end_date=now.replace(hour=17))
+    async with SqlAlchemyUnitOfWork(sessions) as uow:
+        user = await uow.users.upsert_identity(Identity(457), now)
+        for event in (future, ending_now, expired):
+            await uow.events.upsert(event)
+        stored = {event.title: event for event in await uow.events.available(
+            'Москва', 'demo', now.replace(hour=15))}
+        assert [event.title for event in await uow.events.available(
+            'Москва', 'demo', now)] == ['Будущее']
+        for event in stored.values():
+            await uow.reactions.save(user.id, event.id, 'like')
+        await uow.commit()
+        assert [event.title for event in await uow.events.favorites(
+            user.id, 'demo', now)] == ['Будущее']
+        assert await uow.reactions.saved_ids(user.id) == {
+            event.id for event in stored.values()}
+        assert await uow.events.get(stored['Завершается сейчас'].id) is not None
 
 
 def test_mapper_copies_collections_and_explicitly_maps_fields():
@@ -193,7 +218,7 @@ async def test_successful_snapshot_removes_missing_events_and_restores_reappeari
         assert (await CatalogService(uow, sync, Clock(), 'culture').get(user, CatalogQuery())).total == 0
         assert not await uow.events.has_available('Москва', 'culture', now)
         assert await uow.events.get(stored.id) is None
-        assert await uow.events.favorites(user.id, 'culture') == []
+        assert await uow.events.favorites(user.id, 'culture', now) == []
         assert len(await uow.events.available('Казань', 'culture', now)) == 1
         assert len(await uow.events.available('Москва', 'demo', now)) == 1
         assert stored.id in await uow.reactions.saved_ids(user.id)
@@ -202,7 +227,7 @@ async def test_successful_snapshot_removes_missing_events_and_restores_reappeari
         result = await CatalogService(uow, sync, Clock(), 'culture').get(user, CatalogQuery())
         assert result.total == 1 and result.items[0].is_saved
         assert result.items[0].event.id == stored.id
-        assert len(await uow.events.favorites(user.id, 'culture')) == 1
+        assert len(await uow.events.favorites(user.id, 'culture', now)) == 1
     with pytest.raises(RuntimeError):
         async with SqlAlchemyUnitOfWork(sessions) as uow:
             await uow.events.deactivate_missing('Москва', 'culture', ())

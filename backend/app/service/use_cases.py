@@ -65,8 +65,8 @@ class PreferencesService:
 
 
 class EventsService:
-    def __init__(self, uow: UnitOfWorkPort, config: ServiceConfig):
-        self.uow, self.config = uow, config
+    def __init__(self, uow: UnitOfWorkPort, clock: ClockPort, config: ServiceConfig):
+        self.uow, self.clock, self.config = uow, clock, config
 
     async def detail(self, event_id: UUID):
         event = await self.uow.events.get(event_id)
@@ -75,7 +75,9 @@ class EventsService:
         return event
 
     async def favorites(self, user: User):
-        return await self.uow.events.favorites(user.id, self.config.event_provider)
+        return await self.uow.events.favorites(
+            user.id, self.config.event_provider, self.clock.now()
+        )
 
     async def react(self, user: User, command: ReactCommand):
         await self.detail(command.event_id)

@@ -61,6 +61,20 @@ test("short swipe returns; reaction animates once and shows next card without re
   await expect(card).toBeVisible();
   const initialRecommendations = recommendations;
   const box = (await page.locator(".hero-image").boundingBox())!;
+  await expect(page.getByText("МОЙ ПЛАН", { exact: false })).toHaveCount(0);
+  await expect(page.getByText("ПРОПУСТИТЬ", { exact: true })).toHaveCount(0);
+  await page.mouse.move(box.x + 170, box.y + 60);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width + 500, box.y + 60);
+  const constrainedOffset = await card.evaluate(
+    (element) => new DOMMatrix(getComputedStyle(element).transform).m41,
+  );
+  const cardWidth = await card.evaluate((element) => element.clientWidth);
+  expect(constrainedOffset).toBeLessThanOrEqual(cardWidth - 70);
+  await expect(card.locator(".swipe-cue.like")).not.toHaveCSS("opacity", "0");
+  await page.mouse.move(box.x + 205, box.y + 60);
+  await page.mouse.up();
+  await expect(card).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
   await page.mouse.move(box.x + 170, box.y + 60);
   await page.mouse.down();
   await page.mouse.move(box.x + 205, box.y + 60);

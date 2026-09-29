@@ -9,6 +9,7 @@ from app.main import app
 settings = app.state.runtime.settings
 from app.repository.database import engine
 from app.repository.models import Base
+from app.transport.integrations.demo_data import TEMPLATES
 
 @pytest.mark.asyncio
 async def test_end_to_end_preferences_reactions_and_identity(monkeypatch):
@@ -24,14 +25,14 @@ async def test_end_to_end_preferences_reactions_and_identity(monkeypatch):
         pref = {'city': 'Москва', 'categories': ['koncerty'], 'budget_max': 1500, 'companion': 'friends', 'preferred_days': 'weekends', 'preferred_time': 'evening'}
         assert (await client.put('/api/v1/users/me/preferences', headers=headers, json=pref)).status_code == 200
         assert (await client.get('/api/v1/users/me/preferences', headers=headers)).json() == pref
-        events = (await client.get('/api/v1/recommendations', headers=headers)).json()
-        assert len(events) == 9 and all(e['city'] == 'Москва' for e in events)
+        events = (await client.get('/api/v1/recommendations?limit=100', headers=headers)).json()
+        assert len(events) == len(TEMPLATES) and all(e['city'] == 'Москва' for e in events)
         assert events[0]['category'] == 'koncerty'
         liked, disliked = events[0]['id'], events[1]['id']
         for event_id, reaction in [(liked, 'like'), (liked, 'like'), (disliked, 'dislike')]:
             assert (await client.post(f'/api/v1/events/{event_id}/reaction', headers=headers, json={'reaction': reaction})).status_code == 200
-        remaining = (await client.get('/api/v1/recommendations', headers=headers)).json()
-        assert len(remaining) == 7 and not {liked, disliked} & {e['id'] for e in remaining}
+        remaining = (await client.get('/api/v1/recommendations?limit=100', headers=headers)).json()
+        assert len(remaining) == len(TEMPLATES) - 2 and not {liked, disliked} & {e['id'] for e in remaining}
         assert [e['id'] for e in (await client.get('/api/v1/events/favorites', headers=headers)).json()] == [liked]
         assert (await client.get(f'/api/v1/events/{liked}', headers=headers)).json()['latitude'] is not None
         assert (await client.post(f'/api/v1/events/{liked}/reaction', headers=headers, json={'reaction': 'unknown'})).status_code == 422

@@ -58,7 +58,9 @@ class CatalogService:
         if query.free_only and query.budget_max is not None:
             raise InvalidInput('Выберите бесплатно или ограничение бюджета')
         await self.sync.ensure(user.city)
-        events = await self.uow.events.available(user.city, self.provider, self.clock.now(), inclusive=False)
+        events = await self.uow.events.available(
+            user.city, self.provider, self.clock.now()
+        )
         now = self.clock.now()
         filtered = [event for event in events if matches(
             event, now=now, q=query.q.strip(), date_mode=query.date_mode,

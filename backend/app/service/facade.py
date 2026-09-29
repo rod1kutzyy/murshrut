@@ -27,7 +27,7 @@ class Services:
         self.sync = EventSyncService(uow, provider, clock, config, sync_state)
         self.auth = AuthService(uow, verifier, tokens, clock, config)
         self.preferences = PreferencesService(uow, provider, clock, config)
-        self.events = EventsService(uow, config)
+        self.events = EventsService(uow, clock, config)
         self.catalog = CatalogService(uow, self.sync, clock, config.event_provider)
         self.recommendations = RecommendationService(
             uow, self.sync, clock, config.event_provider

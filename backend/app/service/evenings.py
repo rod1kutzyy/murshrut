@@ -304,9 +304,7 @@ class EveningService:
         disliked = Counter(row.category for row in history if row.reaction == "dislike")
         banned = {row.event_id for row in history if row.reaction == "dislike"}
         saved = await self.uow.reactions.saved_ids(user.id)
-        rows = await self.uow.events.available(
-            user.city, self.provider, now, inclusive=False
-        )
+        rows = await self.uow.events.available(user.city, self.provider, now)
         days = defaultdict(list)
         for event in rows:
             if (
@@ -384,6 +382,11 @@ class EveningService:
 
     async def saved(self, user: User) -> list[EveningPlan]:
         return await self.uow.evenings.saved(user.id)
+
+    async def delete(self, user: User, plan_id: UUID) -> None:
+        if not await self.uow.evenings.delete(plan_id, user.id):
+            raise NotFound("План вечера не найден")
+        await self.uow.commit()
 
     async def warnings(self, plan: EveningPlan) -> list[str]:
         warnings = []

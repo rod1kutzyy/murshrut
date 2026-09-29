@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import case, func, select, update
+from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -104,10 +104,7 @@ class EventRepository(EventRepositoryPort):
         row = await self._session.get(Event, event_id)
         return event_from_model(row) if row and row.is_active else None
 
-    async def available(
-        self, city: str, provider: str, now: datetime, *, inclusive: bool = True
-    ):
-        date_condition = Event.end_date >= now if inclusive else Event.end_date > now
+    async def available(self, city: str, provider: str, now: datetime):
         rows = (
             await self._session.scalars(
                 select(Event)
@@ -115,7 +112,7 @@ class EventRepository(EventRepositoryPort):
                     Event.city.ilike(city),
                     Event.provider == provider,
                     Event.is_active.is_(True),
-                    date_condition,
+                    Event.end_date > now,
                 )
                 .order_by(Event.start_date, Event.id)
             )
@@ -137,7 +134,7 @@ class EventRepository(EventRepositoryPort):
             is not None
         )
 
-    async def favorites(self, user_id: UUID, provider: str):
+    async def favorites(self, user_id: UUID, provider: str, now: datetime):
         rows = (
             await self._session.scalars(
                 select(Event)
@@ -147,6 +144,7 @@ class EventRepository(EventRepositoryPort):
                     EventReaction.reaction == "like",
                     Event.provider == provider,
                     Event.is_active.is_(True),
+                    Event.end_date > now,
                 )
                 .order_by(EventReaction.created_at.desc())
             )
@@ -303,3 +301,12 @@ class EveningRepository(EveningRepositoryPort):
         )
         await self._session.flush()
         return await self.get(plan_id, user_id)
+
+    async def delete(self, plan_id, user_id):
+        result = await self._session.execute(
+            delete(EveningPlan).where(
+                EveningPlan.id == plan_id, EveningPlan.user_id == user_id
+            )
+        )
+        await self._session.flush()
+        return result.rowcount == 1

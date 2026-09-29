@@ -73,10 +73,12 @@ export default function EveningPage({ user }: { user: User }) {
   function select<K extends keyof EveningOptions>(
     key: K,
     value: EveningOptions[K],
+    advance = false,
   ) {
     setDraft((previous) => ({
       ...previous,
       options: { ...previous.options, [key]: value },
+      step: advance ? Math.min(previous.step + 1, 2) : previous.step,
     }));
   }
   async function generate() {
@@ -139,7 +141,7 @@ export default function EveningPage({ user }: { user: User }) {
       if (!active.current) return;
       if (id) setSavedPlan(saved);
       else setDraft((previous) => ({ ...previous, plan: saved }));
-      setNotice("Вечер сохранён в «Мои события».");
+      navigate("/");
     } catch (e) {
       if (active.current) setError((e as Error).message);
     } finally {
@@ -167,25 +169,18 @@ export default function EveningPage({ user }: { user: User }) {
         action={() => setRetry((value) => value + 1)}
       />
     );
-  const selection = [
-    draft.options.vibe,
-    draft.options.duration_hours,
-    draft.options.budget_max,
-  ][draft.step];
   return (
     <section className="evening-page">
-      <button
-        className="text-button evening-back"
-        disabled={busy}
-        onClick={() =>
-          !id && !plan && draft.step > 0
-            ? setDraft((previous) => ({ ...previous, step: previous.step - 1 }))
-            : navigate(-1)
-        }
-      >
-        <ArrowLeft size={17} />
-        Назад
-      </button>
+      {(id || plan || draft.step === 0) && (
+        <button
+          className="text-button evening-back"
+          disabled={busy}
+          onClick={() => navigate(-1)}
+        >
+          <ArrowLeft size={17} />
+          Назад
+        </button>
+      )}
       <div className="eyebrow">МУР СОБЕРЁТ ВСЁ ЗА ВАС</div>
       <h1>
         Собери мой вечер<span className="brand-dot">.</span>
@@ -256,15 +251,32 @@ export default function EveningPage({ user }: { user: User }) {
               <i key={step} className={step <= draft.step ? "filled" : ""} />
             ))}
           </div>
-          <h2 className="evening-step-title">
-            {
-              [
-                "Какой вайб выбираем?",
-                "Сколько у вас времени?",
-                "Какой бюджет на вечер?",
-              ][draft.step]
-            }
-          </h2>
+          <div className="evening-step-heading">
+            {draft.step > 0 && (
+              <button
+                className="text-button evening-criteria-back"
+                disabled={busy}
+                onClick={() =>
+                  setDraft((previous) => ({
+                    ...previous,
+                    step: previous.step - 1,
+                  }))
+                }
+              >
+                <ArrowLeft size={14} />
+                Назад
+              </button>
+            )}
+            <h2 className="evening-step-title">
+              {
+                [
+                  "Какой вайб выбираем?",
+                  "Сколько у вас времени?",
+                  "Какой бюджет на вечер?",
+                ][draft.step]
+              }
+            </h2>
+          </div>
           <div className="evening-choices">
             {draft.step === 0 &&
               VIBES.map((vibe) => (
@@ -273,7 +285,7 @@ export default function EveningPage({ user }: { user: User }) {
                   className={`evening-choice ${draft.options.vibe === vibe.value ? "selected" : ""}`}
                   aria-pressed={draft.options.vibe === vibe.value}
                   disabled={busy}
-                  onClick={() => select("vibe", vibe.value)}
+                  onClick={() => select("vibe", vibe.value, true)}
                 >
                   <strong>{vibe.label}</strong>
                   <small>{vibe.hint}</small>
@@ -286,7 +298,7 @@ export default function EveningPage({ user }: { user: User }) {
                   className={`evening-choice ${draft.options.duration_hours === duration.value ? "selected" : ""}`}
                   aria-pressed={draft.options.duration_hours === duration.value}
                   disabled={busy}
-                  onClick={() => select("duration_hours", duration.value)}
+                  onClick={() => select("duration_hours", duration.value, true)}
                 >
                   {duration.label}
                 </button>
@@ -325,25 +337,16 @@ export default function EveningPage({ user }: { user: User }) {
               action={changeConditions}
             />
           )}
-          <button
-            className="evening-primary"
-            disabled={busy || selection === undefined}
-            onClick={() =>
-              draft.step < 2
-                ? setDraft((previous) => ({
-                    ...previous,
-                    step: previous.step + 1,
-                  }))
-                : generate()
-            }
-          >
-            {busy
-              ? "Собираю ваш вечер…"
-              : draft.step < 2
-                ? "Продолжить"
-                : "Собрать мой вечер"}
-            {draft.step < 2 ? <ArrowRight size={18} /> : <Sparkles size={18} />}
-          </button>
+          {draft.step === 2 && (
+            <button
+              className="evening-primary"
+              disabled={busy || draft.options.budget_max === undefined}
+              onClick={generate}
+            >
+              {busy ? "Собираю ваш вечер…" : "Собрать мой вечер"}
+              <Sparkles size={18} />
+            </button>
+          )}
         </>
       )}
     </section>
