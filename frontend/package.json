@@ -12,7 +12,6 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"tests/**/*.ts\" \"*.ts\" \"*.json\" index.html"
   },
   "dependencies": {
-    "@maxhub/max-ui": "0.5.0",
     "@tailwindcss/vite": "^4.1.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.577.0",

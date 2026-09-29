@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Button } from "@maxhub/max-ui";
+import { Button } from "../components/UI";
 import {
   ArrowLeft,
   Share2,
@@ -93,7 +93,7 @@ export default function EventDetails({ config }: { config: Config }) {
           className="icon-button"
           aria-label="Поделиться"
           onClick={() =>
-            share(event, config.max_bot_name)
+            share(event, config.telegram_bot_username)
               .then(setNotice)
               .catch((e) => {
                 if (e.name !== "AbortError")
@@ -185,7 +185,7 @@ export default function EventDetails({ config }: { config: Config }) {
         variant="secondary"
         className="share-button"
         onClick={() =>
-          share(event, config.max_bot_name)
+          share(event, config.telegram_bot_username)
             .then(setNotice)
             .catch((e) => {
               if (e.name !== "AbortError") setError("Не удалось поделиться.");

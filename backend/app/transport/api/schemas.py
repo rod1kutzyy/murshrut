@@ -86,7 +86,7 @@ class PreferencesOut(BaseModel):
 class ConfigOut(BaseModel):
     demo_mode: bool
     event_provider: str
-    max_bot_name: str
+    telegram_bot_username: str
     demo_cities: list[str]
 
 

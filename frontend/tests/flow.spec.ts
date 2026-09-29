@@ -6,8 +6,8 @@ test("mobile preferences, like, swipe, details, map and deep link", async ({
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  // External bridge and map tiles are not needed to test the application flow.
-  await page.route("https://st.max.ru/**", (route) =>
+  // External Telegram script and map tiles are not needed for the demo flow.
+  await page.route("https://telegram.org/js/**", (route) =>
     route.fulfill({ body: "" }),
   );
   await page.goto("/");
@@ -49,10 +49,14 @@ test("mobile preferences, like, swipe, details, map and deep link", async ({
   const eventId = page.url().split("/events/")[1];
   await page.screenshot({ path: "test-results/details.png", fullPage: true });
   await page.evaluate(() => {
-    window.WebApp = {
-      initData: "test-launch",
-      shareMaxContent: (params) => {
-        sessionStorage.setItem("shared", JSON.stringify(params));
+    window.Telegram = {
+      WebApp: {
+        initData: "test-launch",
+        ready: () => undefined,
+        expand: () => undefined,
+        openTelegramLink: (url) => {
+          sessionStorage.setItem("shared", url);
+        },
       },
     };
   });
@@ -60,11 +64,11 @@ test("mobile preferences, like, swipe, details, map and deep link", async ({
     .getByRole("button", { name: "Поделиться", exact: true })
     .last()
     .click();
-  const shared = await page.evaluate(() =>
-    JSON.parse(sessionStorage.getItem("shared") || "{}"),
+  const shared = await page.evaluate(() => sessionStorage.getItem("shared"));
+  expect(decodeURIComponent(shared || "")).toContain(title);
+  expect(decodeURIComponent(shared || "")).toContain(
+    `startapp=event_${eventId}`,
   );
-  expect(shared.text).toContain(title);
-  expect(shared.link).toContain(`startapp=event_${eventId}`);
   await page.goto(`/?startapp=event_${eventId}`);
   await expect(
     page.getByRole("heading", { name: title, exact: true }),

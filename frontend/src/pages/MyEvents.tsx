@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@maxhub/max-ui";
+import { Button } from "../components/UI";
 import {
   Settings,
-  Sparkles,
+  PartyPopper,
+  UserRoundSearch,
   MapPin,
   ChevronRight,
   Compass,
   ArrowRight,
+  Trash2,
 } from "lucide-react";
 import type { EveningPlan, Event } from "../types";
 import { eveningCost, eveningDate, eveningDuration } from "../evening";
@@ -24,7 +26,9 @@ export default function MyEvents() {
   const [retry, setRetry] = useState(0);
   const [plans, setPlans] = useState<EveningPlan[]>([]);
   const [planError, setPlanError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
   const [plansLoading, setPlansLoading] = useState(true);
+  const [deletingPlanId, setDeletingPlanId] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
     setPlanError("");
@@ -43,6 +47,23 @@ export default function MyEvents() {
       active = false;
     };
   }, [retry]);
+  async function deletePlan(plan: EveningPlan) {
+    if (
+      deletingPlanId ||
+      !window.confirm(`Удалить сохранённый вечер «${eveningDate(plan)}»?`)
+    )
+      return;
+    setDeletingPlanId(plan.id);
+    setDeleteError("");
+    try {
+      await api<void>(`/evenings/${plan.id}`, { method: "DELETE" });
+      setPlans((current) => current.filter((item) => item.id !== plan.id));
+    } catch (e) {
+      setDeleteError((e as Error).message);
+    } finally {
+      setDeletingPlanId(null);
+    }
+  }
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -95,16 +116,17 @@ export default function MyEvents() {
             </>
           )}
         </p>
-        <Sparkles size={20} />
+        <UserRoundSearch size={20} />
       </div>
       <button className="evening-entry" onClick={() => navigate("/evening")}>
-        <Sparkles size={20} />
+        <PartyPopper size={20} />
         <span>
           Собери мой вечер<small>Готовый маршрут под ваше настроение</small>
         </span>
         <ChevronRight size={18} />
       </button>
       <ErrorMessage message={planError} />
+      <ErrorMessage message={deleteError} />
       {planError && (
         <button
           className="text-button"
@@ -117,26 +139,35 @@ export default function MyEvents() {
         <div className="saved-evenings">
           <h2>Мои вечера</h2>
           {plans.map((plan) => (
-            <button
-              className="saved-evening"
-              key={plan.id}
-              onClick={() => navigate(`/evenings/${plan.id}`)}
-            >
-              <strong>{eveningDate(plan)}</strong>
-              <span>
-                {plan.city} · {plan.event_count} событий ·{" "}
-                {eveningDuration(plan.duration_minutes)}
-              </span>
-              <span>{eveningCost(plan)}</span>
-              <small>
-                {plan.events.map((event) => event.title).join(" → ")}
-              </small>
-              {!!plan.warnings.length && (
-                <small className="evening-outdated">
-                  Проверьте актуальность вечера
+            <article className="saved-evening" key={plan.id}>
+              <button
+                className="saved-evening-open"
+                onClick={() => navigate(`/evenings/${plan.id}`)}
+              >
+                <strong>{eveningDate(plan)}</strong>
+                <span>
+                  {plan.city} · {plan.event_count} событий ·{" "}
+                  {eveningDuration(plan.duration_minutes)}
+                </span>
+                <span>{eveningCost(plan)}</span>
+                <small>
+                  {plan.events.map((event) => event.title).join(" → ")}
                 </small>
-              )}
-            </button>
+                {!!plan.warnings.length && (
+                  <small className="evening-outdated">
+                    Проверьте актуальность вечера
+                  </small>
+                )}
+              </button>
+              <button
+                className="saved-evening-delete"
+                aria-label={`Удалить вечер: ${eveningDate(plan)}`}
+                disabled={deletingPlanId !== null}
+                onClick={() => deletePlan(plan)}
+              >
+                <Trash2 size={17} />
+              </button>
+            </article>
           ))}
         </div>
       )}

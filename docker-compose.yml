@@ -20,8 +20,8 @@ services:
       DEMO_MODE: ${DEMO_MODE:-true}
       EVENT_PROVIDER: ${EVENT_PROVIDER:-demo}
       JWT_SECRET: ${JWT_SECRET:-local-demo-secret-change-before-production-32}
-      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:-}
-      MAX_BOT_NAME: ${MAX_BOT_NAME:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
       CULTURE_API_KEY: ${CULTURE_API_KEY:-}
       CULTURE_EVENTS_PATH: ${CULTURE_EVENTS_PATH:-pushkinsCardEvents}
       ADMIN_SYNC_TOKEN: ${ADMIN_SYNC_TOKEN:-}

@@ -36,7 +36,7 @@ const categories = [
 async function mockApp(page: Page, available = categories) {
   const saved = new Set<string>();
   const requests: URL[] = [];
-  await page.route("https://st.max.ru/**", (route) =>
+  await page.route("https://telegram.org/js/**", (route) =>
     route.fulfill({ body: "" }),
   );
   await page.route("**/api/v1/**", async (route) => {

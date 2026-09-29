@@ -1,5 +1,5 @@
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Sparkles, SlidersHorizontal } from "lucide-react";
+import { PartyPopper, SlidersHorizontal } from "lucide-react";
 import type { User } from "../types";
 import SwipeDiscovery from "../components/SwipeDiscovery";
 import Catalog from "../components/Catalog";
@@ -17,7 +17,7 @@ export default function Discover({ user }: { user: User }) {
     <section className="discovery-page">
       <div className="page-heading">
         <div>
-          <div className="eyebrow">ГОРОД ПОЛОН ВОЗМОЖНОСТЕЙ</div>
+          <div className="eyebrow">СВОБОДНЫЙ ВЕЧЕР — ГОТОВЫЙ ПЛАН</div>
           <h1>
             Открывать<span className="brand-dot">.</span>
           </h1>
@@ -34,7 +34,7 @@ export default function Discover({ user }: { user: User }) {
         className="evening-entry evening-entry-discover"
         onClick={() => navigate("/evening")}
       >
-        <Sparkles size={17} />
+        <PartyPopper size={17} />
         <span>Собери мой вечер</span>
         <span aria-hidden="true">→</span>
       </button>

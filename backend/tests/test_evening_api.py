@@ -1,15 +1,16 @@
 from dataclasses import replace
 from datetime import datetime, timezone
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.bootstrap import Runtime
 from app.config import Settings
-from app.repository.models import Base
+from app.repository.models import Base, Event as EventModel
 from app.service.entities import Category, Identity
 from app.service.errors import ProviderUnavailable
 from app.transport.api.application import create_app
@@ -103,20 +104,59 @@ async def test_api_generation_save_restore_and_user_isolation(api_client):
     assert exhausted == {"plan": None, "reason": "exhausted"}
     async with runtime.services() as services:
         other = await services.auth.uow.users.upsert_identity(
-            Identity(987654), datetime.now(timezone.utc)
+            Identity(provider="test", external_user_id=987654),
+            datetime.now(timezone.utc),
         )
         await services.auth.uow.commit()
         token = services.auth.tokens.issue(other.id)
     foreign = {"Authorization": "Bearer " + token}
-    for method, suffix in [("GET", ""), ("POST", "/save")]:
+    for method, suffix in [("GET", ""), ("POST", "/save"), ("DELETE", "")]:
         assert (
             await client.request(
                 method, f"/api/v1/evenings/{plan['id']}{suffix}", headers=foreign
             )
         ).status_code == 404
     assert (
+        await client.delete(f"/api/v1/evenings/{plan['id']}", headers=headers)
+    ).status_code == 204
+    assert (await client.get("/api/v1/evenings", headers=headers)).json() == []
+    assert (
+        await client.get(f"/api/v1/evenings/{plan['id']}", headers=headers)
+    ).status_code == 404
+    assert (
         await client.get(f"/api/v1/evenings/{uuid4()}", headers=headers)
     ).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_api_favorites_hide_expired_event_and_keep_reaction(api_client):
+    client, headers, runtime = api_client
+    recommendations = (
+        await client.get("/api/v1/recommendations", headers=headers)
+    ).json()
+    event_id = recommendations[0]["id"]
+    assert (
+        await client.post(
+            f"/api/v1/events/{event_id}/reaction",
+            headers=headers,
+            json={"reaction": "like"},
+        )
+    ).status_code == 200
+    async with runtime.sessions() as session:
+        await session.execute(
+            update(EventModel)
+            .where(EventModel.id == UUID(event_id))
+            .values(end_date=NOW)
+        )
+        await session.commit()
+    assert (await client.get("/api/v1/events/favorites", headers=headers)).json() == []
+    assert (
+        await client.get(f"/api/v1/events/{event_id}", headers=headers)
+    ).status_code == 200
+    token = headers["Authorization"].removeprefix("Bearer ")
+    async with runtime.services() as services:
+        user = await services.auth.current_user(token)
+        assert UUID(event_id) in await services.events.uow.reactions.saved_ids(user.id)
 
 
 @pytest.mark.asyncio
@@ -156,8 +196,12 @@ async def test_repository_popularity_excludes_self_and_plans_survive_event_remov
     )
 
     async with SqlAlchemyUnitOfWork(sessions) as uow:
-        user = await uow.users.upsert_identity(Identity(555), NOW)
-        other = await uow.users.upsert_identity(Identity(666), NOW)
+        user = await uow.users.upsert_identity(
+            Identity(provider="test", external_user_id=555), NOW
+        )
+        other = await uow.users.upsert_identity(
+            Identity(provider="test", external_user_id=666), NOW
+        )
         draft = event()
         await uow.events.upsert(draft)
         row = (await uow.events.available("Москва", "demo", NOW))[0]
@@ -205,6 +249,10 @@ async def test_repository_popularity_excludes_self_and_plans_survive_event_remov
         assert await uow.evenings.save(plan.id, other.id, NOW) is None
         assert len(await uow.evenings.saved(user.id)) == 1
         assert await uow.evenings.saved(other.id) == []
+        assert not await uow.evenings.delete(plan.id, other.id)
+        assert await uow.evenings.delete(plan.id, user.id)
+        await uow.commit()
+        assert await uow.evenings.get(plan.id, user.id) is None
 
 
 @pytest.mark.asyncio

@@ -20,10 +20,13 @@ export default function SwipeDiscovery() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
-  const [offset, setOffset] = useState(0);
   const [retry, setRetry] = useState(0);
   const cardRef = useRef<HTMLElement>(null);
+  const likeCueRef = useRef<HTMLDivElement>(null);
+  const dislikeCueRef = useRef<HTMLDivElement>(null);
   const locked = useRef(false);
+  const offset = useRef(0);
+  const animationFrame = useRef<number | null>(null);
   const [dragging, setDragging] = useState(false);
   const start = useRef<{ x: number; y: number } | null>(null);
   useEffect(() => {
@@ -44,7 +47,66 @@ export default function SwipeDiscovery() {
       active = false;
     };
   }, [retry]);
+  useEffect(
+    () => () => {
+      if (animationFrame.current !== null)
+        cancelAnimationFrame(animationFrame.current);
+    },
+    [],
+  );
   const event = events[0];
+
+  function maxDragOffset() {
+    const cardWidth = cardRef.current?.offsetWidth ?? 320;
+    return Math.max(0, cardWidth - 72);
+  }
+
+  function clampOffset(value: number) {
+    const limit = maxDragOffset();
+    return Math.max(-limit, Math.min(limit, value));
+  }
+
+  function setCueProgress(value: number) {
+    const progress = Math.min(1, Math.max(0, (Math.abs(value) - 18) / 78));
+    const activeCue = value > 0 ? likeCueRef.current : dislikeCueRef.current;
+    const inactiveCue = value > 0 ? dislikeCueRef.current : likeCueRef.current;
+    if (activeCue) {
+      activeCue.style.opacity = String(progress);
+      activeCue.style.transform = `translate(-50%, -50%) scale(${0.76 + progress * 0.24})`;
+    }
+    if (inactiveCue) {
+      inactiveCue.style.opacity = "0";
+      inactiveCue.style.transform = "translate(-50%, -50%) scale(.76)";
+    }
+  }
+
+  function applyOffset(value: number) {
+    const nextOffset = clampOffset(value);
+    offset.current = nextOffset;
+    if (cardRef.current) {
+      const rotation = Math.max(-10, Math.min(10, nextOffset / 28));
+      cardRef.current.style.transform = `translate3d(${nextOffset}px, 0, 0) rotate(${rotation}deg)`;
+    }
+    setCueProgress(nextOffset);
+  }
+
+  function scheduleOffset(value: number) {
+    if (animationFrame.current !== null)
+      cancelAnimationFrame(animationFrame.current);
+    animationFrame.current = requestAnimationFrame(() => {
+      applyOffset(value);
+      animationFrame.current = null;
+    });
+  }
+
+  function resetCard() {
+    if (animationFrame.current !== null) {
+      cancelAnimationFrame(animationFrame.current);
+      animationFrame.current = null;
+    }
+    applyOffset(0);
+  }
+
   async function react(reaction: "like" | "dislike") {
     if (!event || locked.current) return;
     locked.current = true;
@@ -56,20 +118,21 @@ export default function SwipeDiscovery() {
       "(prefers-reduced-motion: reduce)",
     ).matches;
     const direction = reaction === "like" ? 1 : -1;
+    setCueProgress(direction * 96);
     const animation = cardRef.current?.animate(
       [
         {
-          transform: `translateX(${offset}px) rotate(${offset / 24}deg)`,
+          transform: `translate3d(${offset.current}px, 0, 0) rotate(${Math.max(-10, Math.min(10, offset.current / 28))}deg)`,
           opacity: 1,
         },
         {
-          transform: `translateX(${direction * (window.innerWidth + 400)}px) rotate(${direction * 24}deg)`,
+          transform: `translate3d(${direction * (window.innerWidth + 400)}px, 0, 0) rotate(${direction * 18}deg)`,
           opacity: 0,
         },
       ],
       {
-        duration: reduced ? 0 : 320,
-        easing: "cubic-bezier(.4,0,1,1)",
+        duration: reduced ? 0 : 380,
+        easing: "cubic-bezier(.22,.72,.18,1)",
         fill: "forwards",
       },
     );
@@ -86,11 +149,11 @@ export default function SwipeDiscovery() {
           : "Учту это в следующих подборках",
       );
       setEvents((current) => current.filter((item) => item.id !== event.id));
-      setOffset(0);
+      resetCard();
       if (events.length === 1) setRetry((r) => r + 1);
     } catch (e) {
       setError((e as Error).message);
-      setOffset(0);
+      resetCard();
     } finally {
       animation?.cancel();
       locked.current = false;
@@ -110,19 +173,24 @@ export default function SwipeDiscovery() {
     e.currentTarget.setPointerCapture(e.pointerId);
   }
   function pointerMove(e: PointerEvent) {
-    if (start.current) setOffset(e.clientX - start.current.x);
+    if (start.current) scheduleOffset(e.clientX - start.current.x);
   }
   function pointerUp(e: PointerEvent) {
     if (!start.current) return;
     const dx = e.clientX - start.current.x,
       dy = e.clientY - start.current.y;
+    if (animationFrame.current !== null) {
+      cancelAnimationFrame(animationFrame.current);
+      animationFrame.current = null;
+    }
+    applyOffset(dx);
     start.current = null;
     setDragging(false);
     if (e.currentTarget.hasPointerCapture(e.pointerId))
       e.currentTarget.releasePointerCapture(e.pointerId);
     if (Math.abs(dx) > 90 && Math.abs(dx) > Math.abs(dy) * 1.3)
       void react(dx > 0 ? "like" : "dislike");
-    else setOffset(0);
+    else resetCard();
   }
   return (
     <section className="discover">
@@ -152,9 +220,6 @@ export default function SwipeDiscovery() {
               ref={cardRef}
               aria-busy={busy}
               className={`swipe-card ${busy ? "busy" : ""} ${dragging ? "dragging" : ""}`}
-              style={{
-                transform: `translateX(${offset}px) rotate(${offset / 24}deg)`,
-              }}
               onPointerDown={pointerDown}
               onPointerMove={pointerMove}
               onPointerUp={pointerUp}
@@ -166,17 +231,26 @@ export default function SwipeDiscovery() {
               onPointerCancel={() => {
                 start.current = null;
                 setDragging(false);
-                setOffset(0);
+                resetCard();
               }}
             >
               <div className="hero-image">
                 <EventImage key={event.id} event={event} />
                 <span className="category-tag">{event.category_name}</span>
-                {Math.abs(offset) > 40 && (
-                  <div className={`swipe-verdict ${offset > 0 ? "yes" : "no"}`}>
-                    {offset > 0 ? "МОЙ ПЛАН ♡" : "ПРОПУСТИТЬ"}
-                  </div>
-                )}
+                <div
+                  ref={likeCueRef}
+                  className="swipe-cue like"
+                  aria-hidden="true"
+                >
+                  <Heart size={38} strokeWidth={1.8} />
+                </div>
+                <div
+                  ref={dislikeCueRef}
+                  className="swipe-cue dislike"
+                  aria-hidden="true"
+                >
+                  <ThumbsDown size={36} strokeWidth={1.8} />
+                </div>
               </div>
               <div className="card-content">
                 <div className="card-date">

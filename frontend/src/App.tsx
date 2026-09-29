@@ -34,17 +34,21 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
   useEffect(() => {
+    window.Telegram?.WebApp.ready();
+    window.Telegram?.WebApp.expand();
+  }, []);
+  useEffect(() => {
     let cancelled = false;
     setError("");
     (async () => {
       const cfg = await api<Config>("/config");
       const initData =
-        window.WebApp?.initData ||
-        new URLSearchParams(window.location.hash.slice(1)).get("WebAppData");
+        window.Telegram?.WebApp.initData ||
+        new URLSearchParams(window.location.hash.slice(1)).get("tgWebAppData");
       if (!initData && !cfg.demo_mode)
-        throw new Error("Откройте это мини-приложение внутри MAX.");
+        throw new Error("Откройте это мини-приложение внутри Telegram.");
       const auth = await api<{ user: User; access_token: string }>(
-        initData ? "/auth/max" : "/auth/demo",
+        initData ? "/auth/telegram" : "/auth/demo",
         {
           method: "POST",
           body: initData ? JSON.stringify({ init_data: initData }) : undefined,
@@ -55,7 +59,8 @@ export default function App() {
       setUser(auth.user);
       setConfig(cfg);
       const start =
-        window.WebApp?.initDataUnsafe?.start_param ||
+        window.Telegram?.WebApp.initDataUnsafe?.start_param ||
+        new URLSearchParams(window.location.search).get("tgWebAppStartParam") ||
         new URLSearchParams(window.location.search).get("startapp");
       if (start?.startsWith("event_"))
         navigate(`/events/${encodeURIComponent(start.slice(6))}`, {
@@ -69,7 +74,7 @@ export default function App() {
     };
   }, [attempt, navigate]);
   useEffect(() => {
-    const back = window.WebApp?.BackButton;
+    const back = window.Telegram?.WebApp.BackButton;
     if (!back) return;
     const callback = () => navigate(-1);
     if (

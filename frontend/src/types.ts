@@ -46,23 +46,24 @@ export type Preferences = {
 export type Config = {
   demo_mode: boolean;
   event_provider: string;
-  max_bot_name: string;
+  telegram_bot_username: string;
   demo_cities: string[];
 };
 declare global {
   interface Window {
-    WebApp?: {
-      initData: string;
-      initDataUnsafe?: { start_param?: string };
-      shareMaxContent?: (params: {
-        text?: string;
-        link?: string;
-      }) => void | Promise<unknown>;
-      BackButton?: {
-        show(): void;
-        hide(): void;
-        onClick(cb: () => void): void;
-        offClick(cb: () => void): void;
+    Telegram?: {
+      WebApp: {
+        initData: string;
+        initDataUnsafe?: { start_param?: string };
+        ready(): void;
+        expand(): void;
+        openTelegramLink(url: string): void;
+        BackButton?: {
+          show(): void;
+          hide(): void;
+          onClick(cb: () => void): void;
+          offClick(cb: () => void): void;
+        };
       };
     };
   }

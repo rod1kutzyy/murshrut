@@ -1,4 +1,4 @@
-import { Button, Spinner } from "@maxhub/max-ui";
+import { Button, Spinner } from "./UI";
 import { Mascot } from "./Mascot";
 export function State({
   title,

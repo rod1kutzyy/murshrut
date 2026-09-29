@@ -54,3 +54,12 @@ async def save(
     services: Services = Depends(get_services),
 ):
     return await response(await services.evenings.save(user, plan_id), services)
+
+
+@router.delete("/{plan_id}", status_code=204)
+async def delete(
+    plan_id: UUID,
+    user: User = Depends(current_user),
+    services: Services = Depends(get_services),
+):
+    await services.evenings.delete(user, plan_id)

@@ -2,7 +2,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
-class MaxProfileDTO(BaseModel):
+class TelegramProfileDTO(BaseModel):
     id: int
     first_name: str | None = None
     last_name: str | None = None

@@ -48,6 +48,44 @@ select:focus-visible {
 button svg {
   flex-shrink: 0;
 }
+.ui-button {
+  border: 0;
+  border-radius: 12px;
+  background: #e8eadf;
+  color: var(--ink);
+  min-height: 44px;
+  padding: 10px 18px;
+  font-weight: 600;
+}
+.ui-button > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.ui-button-stretched {
+  width: 100%;
+}
+.ui-button-large {
+  min-height: 52px;
+}
+.ui-button-secondary {
+  background: transparent;
+  border: 1px solid #dde1d3;
+}
+.ui-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid #e1e4d6;
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: ui-spin 0.8s linear infinite;
+}
+@keyframes ui-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 h1,
 h2,
 h3,
@@ -335,9 +373,12 @@ h1 sup {
   touch-action: pan-y;
   user-select: none;
   box-shadow: 0 12px 28px #383f2908;
-  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  transform: translate3d(0, 0, 0);
+  transition: transform 0.42s cubic-bezier(0.2, 0.9, 0.25, 1.12);
   animation: card-enter 0.32s ease-out;
   will-change: transform, opacity;
+  contain: layout paint;
+  backface-visibility: hidden;
 }
 .hero-image {
   height: 270px;
@@ -470,22 +511,36 @@ h1 sup {
   color: #a0a58f;
   margin-top: 19px;
 }
-.swipe-verdict {
+.swipe-cue {
   position: absolute;
-  top: 90px;
-  left: 30px;
-  border: 3px solid;
-  padding: 12px;
-  font-weight: 750;
-  border-radius: 10px;
-  transform: rotate(-15deg);
-  background: #fff9;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  width: 76px;
+  height: 76px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.76);
+  pointer-events: none;
+  backdrop-filter: blur(7px);
+  box-shadow: 0 10px 30px #292e2717;
+  will-change: transform, opacity;
+  transition:
+    opacity 0.12s ease-out,
+    transform 0.12s ease-out;
 }
-.swipe-verdict.yes {
-  color: #537341;
+.swipe-cue.like {
+  color: #fff;
+  background: #e9794be8;
 }
-.swipe-verdict.no {
-  color: #b85f43;
+.swipe-cue.like svg {
+  fill: #ffffff2e;
+}
+.swipe-cue.dislike {
+  color: #626b57;
+  background: #fffef1e8;
 }
 .notice {
   font-size: 12px;
@@ -1320,8 +1375,18 @@ h1 sup {
 .evening-back {
   margin-bottom: 23px;
 }
-.evening-step-title {
+.evening-step-heading {
   margin: 28px 0 18px;
+}
+.evening-step-title {
+  margin: 0;
+}
+.evening-criteria-back {
+  min-height: 28px;
+  margin-bottom: 8px;
+  padding: 3px 0;
+  gap: 4px;
+  font-size: 12px;
 }
 .evening-choices {
   display: grid;
@@ -1521,15 +1586,38 @@ h1 sup {
   margin-bottom: 14px;
 }
 .saved-evening {
-  display: grid;
-  gap: 7px;
-  width: 100%;
-  text-align: left;
-  padding: 16px;
+  position: relative;
   border: 1px solid #dfe4ce;
   background: #f0f2e6;
   border-radius: 15px;
   margin: 10px 0;
+}
+.saved-evening-open {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  text-align: left;
+  padding: 16px 50px 16px 16px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+.saved-evening-delete {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #9b591f;
+}
+.saved-evening-delete:hover {
+  background: #ffffff80;
 }
 .saved-evening span {
   font-size: 12px;

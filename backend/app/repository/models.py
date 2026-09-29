@@ -32,8 +32,10 @@ class Timestamps:
 
 class User(Timestamps, Base):
     __tablename__ = "users"
+    __table_args__ = (UniqueConstraint("identity_provider", "external_user_id"),)
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    max_user_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
+    identity_provider: Mapped[str] = mapped_column(String(20))
+    external_user_id: Mapped[int] = mapped_column(BigInteger)
     first_name: Mapped[str] = mapped_column(String(200), default="")
     last_name: Mapped[str | None] = mapped_column(String(200))
     username: Mapped[str | None] = mapped_column(String(200))

@@ -56,7 +56,7 @@ async function mockApp(page: Page) {
   let currentUser = { ...user };
   const plans = new Map<string, EveningPlan>();
   const generated: Record<string, unknown>[] = [];
-  await page.route("https://st.max.ru/**", (route) =>
+  await page.route("https://telegram.org/js/**", (route) =>
     route.fulfill({ body: "" }),
   );
   await page.route("**/api/v1/**", async (route) => {
@@ -100,9 +100,14 @@ async function mockApp(page: Page) {
       const plan = plans.get(path.split("/").at(-2)!)!;
       plan.saved = true;
       data = plan;
-    } else if (/\/evenings\/plan-\d+$/.test(path))
-      data = plans.get(path.split("/").at(-1)!);
-    else if (path.endsWith("/favorites") || path.endsWith("/recommendations"))
+    } else if (/\/evenings\/plan-\d+$/.test(path)) {
+      const planId = path.split("/").at(-1)!;
+      if (route.request().method() === "DELETE") {
+        plans.delete(planId);
+        return route.fulfill({ status: 204, body: "" });
+      }
+      data = plans.get(planId);
+    } else if (path.endsWith("/favorites") || path.endsWith("/recommendations"))
       data = [];
     else if (path.includes("/events/event-"))
       data = [...plans.values()]
@@ -116,9 +121,7 @@ async function chooseEvening(page: Page, budget = "До 1000 ₽") {
   await page
     .getByRole("button", { name: "Спокойный вечер", exact: false })
     .click();
-  await page.getByRole("button", { name: "Продолжить", exact: true }).click();
   await page.getByRole("button", { name: "1–2 часа", exact: true }).click();
-  await page.getByRole("button", { name: "Продолжить", exact: true }).click();
   await page.getByRole("button", { name: budget, exact: true }).click();
   await page
     .getByRole("button", { name: "Собрать мой вечер", exact: true })
@@ -135,8 +138,21 @@ test("three steps, route, details return, save and restore the whole evening", a
     .click();
   await expect(
     page.getByRole("button", { name: "Продолжить", exact: true }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   await expect(page.locator(".evening-choices button")).toHaveCount(6);
+  await page
+    .getByRole("button", { name: "Спокойный вечер", exact: false })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Сколько у вас времени?" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Назад", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Какой вайб выбираем?" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Спокойный вечер", exact: false }),
+  ).toHaveAttribute("aria-pressed", "true");
   await chooseEvening(page);
   expect(generated).toEqual([
     {
@@ -163,10 +179,7 @@ test("three steps, route, details return, save and restore the whole evening", a
   await expect(page.locator(".evening-timeline > li")).toHaveCount(2);
   expect(generated).toHaveLength(1);
   await page.getByRole("button", { name: "Мне нравится", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Вечер сохранён", exact: true }),
-  ).toBeDisabled();
-  await page.getByRole("link", { name: "Мои события", exact: true }).click();
+  await expect(page).toHaveURL("/");
   await expect(page.locator(".saved-evening")).toHaveCount(1);
   await page.locator(".saved-evening").click();
   await expect(page).toHaveURL(/\/evenings\/plan-1$/);
@@ -208,6 +221,21 @@ test("another evening excludes previous plans and exhaustion retains the result"
   await expect(page.locator(".evening-timeline h3").first()).toHaveText(
     "Событие вечера 2-0",
   );
+});
+
+test("saved evening can be deleted from my events", async ({ page }) => {
+  const { plans } = await mockApp(page);
+  await page.goto("/evening");
+  await chooseEvening(page);
+  await page.getByRole("button", { name: "Мне нравится", exact: true }).click();
+  await expect(page).toHaveURL("/");
+  await expect(page.locator(".saved-evening")).toHaveCount(1);
+  page.once("dialog", (dialog) => dialog.accept());
+  await page
+    .getByRole("button", { name: "Удалить вечер:", exact: false })
+    .click();
+  await expect(page.locator(".saved-evening")).toHaveCount(0);
+  expect(plans.has("plan-1")).toBe(false);
 });
 
 test("empty state and generation errors permit changing conditions and retry", async ({
@@ -260,11 +288,8 @@ test("failed save and regeneration retain route and loading prevents duplicate r
   await expect(
     page.getByRole("button", { name: "Мне нравится", exact: true }),
   ).toBeEnabled();
+  await expect(page).toHaveURL("/evening");
   await page.unroute("**/evenings/plan-1/save");
-  await page.getByRole("button", { name: "Мне нравится", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Вечер сохранён", exact: true }),
-  ).toBeDisabled();
   let release!: () => void;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
@@ -290,6 +315,9 @@ test("failed save and regeneration retain route and loading prevents duplicate r
   );
   expect(requests).toBe(1);
   await expect(page.locator(".evening-timeline > li")).toHaveCount(2);
+  await page.getByRole("button", { name: "Мне нравится", exact: true }).click();
+  await expect(page).toHaveURL("/");
+  await expect(page.locator(".saved-evening")).toHaveCount(1);
 });
 
 test("changing profile city resets the unsaved route", async ({ page }) => {
@@ -332,7 +360,7 @@ test("real demo source generates and saves a feasible free evening", async ({
   page,
   request,
 }) => {
-  await page.route("https://st.max.ru/**", (route) =>
+  await page.route("https://telegram.org/js/**", (route) =>
     route.fulfill({ body: "" }),
   );
   const auth = await (await request.post("/api/v1/auth/demo")).json();
@@ -354,10 +382,7 @@ test("real demo source generates and saves a feasible free evening", async ({
   );
   await page.getByRole("button", { name: "Мне нравится", exact: true }).click();
   expect((await response).status()).toBe(200);
-  await expect(
-    page.getByRole("button", { name: "Вечер сохранён", exact: true }),
-  ).toBeDisabled();
-  await page.getByRole("link", { name: "Мои события", exact: true }).click();
+  await expect(page).toHaveURL("/");
   await expect(page.locator(".saved-evening").first()).toBeVisible();
 });
 
@@ -395,10 +420,6 @@ test("200 shown variants remain excluded and the limit keeps the current route",
   await expect(page.locator(".evening-timeline h3").first()).toHaveText(
     "Событие вечера 200-0",
   );
-  await page.getByRole("button", { name: "Мне нравится", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Вечер сохранён", exact: true }),
-  ).toBeDisabled();
   await page
     .getByRole("button", { name: "Изменить условия", exact: true })
     .click();

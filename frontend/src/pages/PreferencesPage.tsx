@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Button } from "@maxhub/max-ui";
+import { Button } from "../components/UI";
 import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 import type { Config, Preferences, User } from "../types";
 import { Mascot } from "../components/Mascot";

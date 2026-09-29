@@ -5,7 +5,8 @@ from uuid import UUID
 
 @dataclass(frozen=True)
 class Identity:
-    max_user_id: int
+    provider: str
+    external_user_id: int
     first_name: str = "Друг"
     last_name: str | None = None
     username: str | None = None
@@ -76,7 +77,7 @@ class Reaction:
 class ServiceConfig:
     demo_mode: bool
     event_provider: str
-    max_bot_name: str
+    telegram_bot_username: str
     demo_cities: tuple[str, ...]
     sync_interval_seconds: int
     admin_sync_token: str

@@ -14,11 +14,11 @@ code, tests, README, or an explicit task, do not treat it as authoritative.
 
 ## Project Overview
 
-Murshrut is a mobile-first MAX mini-app for discovering events. It provides
+Murshrut is a mobile-first Telegram Mini App for discovering events. It provides
 onboarding, personalized recommendations, swipe reactions, a filterable catalog,
 favorites, event details, sharing, and a map. The stack is:
 
-- React 19, Vite, TypeScript, Tailwind CSS, MAX UI, and Playwright;
+- React 19, Vite, TypeScript, Tailwind CSS, and Playwright;
 - FastAPI, Pydantic, async SQLAlchemy, and Alembic;
 - PostgreSQL 17 in Compose and CI; SQLite is supported for local development and
   part of the repository test matrix;
@@ -36,7 +36,7 @@ backend service. Do not introduce one unless the task requires it.
 - `backend/app/repository/`: SQLAlchemy models, queries, mappers, and Unit of Work.
 - `backend/app/transport/api/`: FastAPI routes, dependencies, schemas, and error
   translation.
-- `backend/app/transport/integrations/`: MAX, JWT, demo, and Culture adapters.
+- `backend/app/transport/integrations/`: Telegram, JWT, demo, and Culture adapters.
 - `backend/alembic/versions/`: ordered database migrations.
 - `backend/tests/`: unit, API, architecture, mapper, flow, and repository tests.
 - `frontend/src/`: application code; shared API types live in `types.ts`.
@@ -99,14 +99,14 @@ code.
 
 - Live and demo events must never be mixed. An event is visible only for the
   configured provider, active source snapshot, requested city, and relevant time.
-- Invalid MAX init data must never fall back to demo authentication. Demo auth is
+- Invalid Telegram init data must never fall back to demo authentication. Demo auth is
   available only when `DEMO_MODE=true`.
-- MAX init data verification must preserve duplicate-parameter rejection,
+- Telegram init data verification must preserve duplicate-parameter rejection,
   HMAC-SHA256 verification, timestamp limits, and integer ID bounds. JWTs use
   HS256, expire after 24 hours, and remain in frontend memory rather than browser
   storage.
 - Production startup must fail without a non-demo JWT secret of at least 32
-  characters and a MAX bot token. Culture mode must fail without its API key.
+  characters and a Telegram bot token. Culture mode must fail without its API key.
 - Event synchronization is serialized per source scope and throttled by the sync
   interval. A successful complete snapshot may upsert events and deactivate
   missing ones in one transaction. A partial, malformed, or failed upstream fetch
@@ -173,11 +173,11 @@ loading, empty, failure, retry, and busy states. Avoid optimistic UI changes tha
 lose user intent on a failed request. Interactive icon-only controls need accessible
 names, and asynchronous notices/errors should remain perceivable.
 
-MAX Bridge features must be capability-checked because the app also runs in a
+Telegram Mini Apps features must be capability-checked because the app also runs in a
 regular browser. Register and clean up Bridge callbacks. Sharing APIs must be
 invoked from a user action. Keep external links safe with `rel="noreferrer"`.
 
-Use existing CSS and MAX UI conventions before adding another UI system. Do not
+Use the existing CSS and local UI components before adding another UI system. Do not
 manually edit `package-lock.json`; update it through npm only when dependencies
 actually change. Do not replace bundled artwork or add remote assets without a
 clear product need and appropriate attribution.
@@ -241,7 +241,7 @@ Use `docker compose down --volumes --remove-orphans` only for a disposable test
 stack whose data is safe to delete.
 
 Add or update regression tests for changed behavior. Service tests should use fake
-ports and controlled clocks; integration tests must not depend on live MAX or
+ports and controlled clocks; integration tests must not depend on live Telegram or
 Culture credentials. If a required check cannot run, report exactly what was not
 run and why.
 

@@ -171,7 +171,7 @@ def configuration_to_response(config: ServiceConfig) -> ConfigOut:
     return ConfigOut(
         demo_mode=config.demo_mode,
         event_provider=config.event_provider,
-        max_bot_name=config.max_bot_name,
+        telegram_bot_username=config.telegram_bot_username,
         demo_cities=list(config.demo_cities),
     )
 
