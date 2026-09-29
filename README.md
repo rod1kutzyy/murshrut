@@ -52,6 +52,26 @@ curl http://localhost:8080/api/health
 docker compose down
 ```
 
+### API-документация
+
+После запуска Swagger UI доступен на
+[http://localhost:8080/api/docs](http://localhost:8080/api/docs), а актуальная
+OpenAPI 3.1 схема — на
+[http://localhost:8080/api/openapi.json](http://localhost:8080/api/openapi.json).
+Для вызова защищённых методов получите `access_token` через `POST
+/api/v1/auth/demo` в деморежиме или `POST /api/v1/auth/max`, затем нажмите
+**Authorize** и вставьте токен. Административная синхронизация использует
+отдельную схему `AdminToken` и заголовок `X-Admin-Token`.
+
+Версионируемый YAML-снимок находится в [`docs/openapi.yaml`](docs/openapi.yaml).
+FastAPI остаётся источником истины: после изменения HTTP-контракта обновите и
+проверьте снимок командами:
+
+```bash
+backend/.venv/bin/python scripts/export_openapi.py
+backend/.venv/bin/python scripts/export_openapi.py --check
+```
+
 ## Что работает
 
 - Анкета из трёх шагов: город, интересы, компания, бюджет, дни и время.

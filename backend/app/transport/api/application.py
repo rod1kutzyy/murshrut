@@ -13,6 +13,7 @@ from ...service.errors import (
     Unauthorized,
 )
 from . import admin, auth, evenings, events, system, users
+from .openapi import TAGS_METADATA
 
 ERROR_CODES = {
     Unauthorized: 401,
@@ -39,7 +40,26 @@ def create_app(runtime):
         finally:
             await runtime.shutdown()
 
-    app = FastAPI(title="Муршрут — персональная афиша", lifespan=lifespan)
+    app = FastAPI(
+        title="Муршрут — персональная афиша",
+        summary="API персональных рекомендаций и готовых маршрутов на вечер",
+        description=(
+            "Backend мобильного MAX mini-app «Муршрут». Для защищённых методов "
+            "сначала получите JWT через раздел auth, затем нажмите Authorize."
+        ),
+        version="1.0.0",
+        lifespan=lifespan,
+        openapi_url="/api/openapi.json",
+        docs_url="/api/docs",
+        redoc_url=None,
+        swagger_ui_oauth2_redirect_url=None,
+        openapi_tags=TAGS_METADATA,
+        swagger_ui_parameters={
+            "displayRequestDuration": True,
+            "filter": True,
+            "persistAuthorization": True,
+        },
+    )
     app.state.runtime = runtime
     app.add_exception_handler(ServiceError, service_error_handler)
     for router in (
