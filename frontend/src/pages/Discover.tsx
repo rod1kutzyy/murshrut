@@ -17,7 +17,7 @@ export default function Discover({ user }: { user: User }) {
     <section className="discovery-page">
       <div className="page-heading">
         <div>
-          <div className="eyebrow">ГОРОД ПОЛОН ВОЗМОЖНОСТЕЙ</div>
+          <div className="eyebrow">СВОБОДНЫЙ ВЕЧЕР — ГОТОВЫЙ ПЛАН</div>
           <h1>
             Открывать<span className="brand-dot">.</span>
           </h1>
